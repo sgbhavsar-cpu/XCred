@@ -1,0 +1,50 @@
+# ── .NET ─────────────────────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.ncrunchproject
+*.ncrunch*
+*.DotSettings.user
+launchSettings.json
+appsettings.Development.json
+appsettings.Local.json
+
+# ── EF Core migrations – keep source, ignore generated SQL scripts ────────────
+*.sql
+
+# ── Runtime / data ────────────────────────────────────────────────────────────
+logs/
+*.log
+*.ldf
+*.mdf
+
+# ── Node / React ──────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.local
+
+# Frontend build output is served from wwwroot in production
+src/XCred.Api/wwwroot/
+
+# ── Secrets / environment ─────────────────────────────────────────────────────
+.env
+.env.*
+secrets.json
+**/UserSecrets/
+
+# ── OS / tooling ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# ── Claude Code (local dev assistant config) ─────────────────────────────────
+.claude/

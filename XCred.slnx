@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/XCred.Api/XCred.Api.csproj" />
+    <Project Path="src/XCred.Core/XCred.Core.csproj" />
+    <Project Path="src/XCred.Infrastructure/XCred.Infrastructure.csproj" />
+  </Folder>
+</Solution>
