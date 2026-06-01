@@ -17,18 +17,25 @@ public class ExpiryNotificationService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Brief startup delay so the app is fully initialised before the first run
-        await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            await RunAsync();
+            // Brief startup delay so the app is fully initialised before the first run
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
 
-            // Calculate delay until next midnight UTC
-            var now = DateTime.UtcNow;
-            var nextRun = now.Date.AddDays(1);
-            var delay = nextRun - now;
-            await Task.Delay(delay, stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await RunAsync();
+
+                // Calculate delay until next midnight UTC
+                var now = DateTime.UtcNow;
+                var nextRun = now.Date.AddDays(1);
+                var delay = nextRun - now;
+                await Task.Delay(delay, stoppingToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on graceful shutdown when stoppingToken is cancelled — not an error.
         }
     }
 
