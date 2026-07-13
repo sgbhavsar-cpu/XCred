@@ -42,16 +42,18 @@ export async function ensureAccountExists(page: Page) {
 // docs/requirements.md §3.5). A full page navigation (page.goto) reloads the SPA and wipes it,
 // bouncing back to /login. So all in-app navigation after login must go through real
 // clicks on the persistent sidebar (React Router client-side transitions), never page.goto.
-export async function goToNewCredentialForm(page: Page) {
+export async function goToCredentials(page: Page) {
   await page.getByRole('link', { name: 'Credentials', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Credentials', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Add Credential' }).click();
-  await expect(page.getByRole('heading', { name: 'Add Credential' })).toBeVisible();
 }
 
-export async function goToCredentialGroups(page: Page) {
-  await page.getByRole('link', { name: 'Credential Groups' }).click();
-  await expect(page.getByRole('heading', { name: 'Credential Groups', exact: true })).toBeVisible();
+export async function goToNewCredentialForm(page: Page) {
+  await goToCredentials(page);
+  // exact:true — the page also has a per-group "Add credential to this group" button, whose
+  // accessible name contains "Add credential" as a case-insensitive substring and would
+  // otherwise ambiguously match too once any credential group exists.
+  await page.getByRole('button', { name: 'Add Credential', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add Credential' })).toBeVisible();
 }
 
 export function fieldLocator(page: Page, key: string) {

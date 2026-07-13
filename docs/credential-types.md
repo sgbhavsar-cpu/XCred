@@ -14,17 +14,21 @@ Field type legend: `text`, `password` (masked + copy + strength meter), `textare
 `url` (validated, with an "open in new tab" action), `select` (fixed options), `list`
 (repeatable text rows, stored as a JSON string array — e.g. multiple IP addresses).
 
+Fields marked **[link]** below show an inline "open" icon (mail app, phone/VoIP app, SSH
+handler, or new browser tab depending on the field) — see requirements.md §11.1 for exactly
+which schemes are reliable vs. best-effort.
+
 ---
 
 ## Website Login
 | Field | Type | Notes |
 |---|---|---|
-| URL | url | |
+| URL | url [link] | |
 | Username / Email | text | |
 | Password | password | |
 | TOTP Secret | text | optional |
-| Recovery Email | text | optional |
-| Recovery Phone | text | optional |
+| Recovery Email | text [link] | optional |
+| Recovery Phone | text [link] | optional |
 
 ## Database
 | Field | Type | Notes |
@@ -47,7 +51,7 @@ Field type legend: `text`, `password` (masked + copy + strength meter), `textare
 ## SSH Key Pair
 | Field | Type | Notes |
 |---|---|---|
-| Host / Server | text | optional |
+| Host / Server | text [link] | optional — opens `ssh://` (best-effort, see §11.1) |
 | Username | text | optional |
 | Private Key | textarea | |
 | Public Key | textarea | optional |
@@ -117,7 +121,7 @@ with its related Payment Card, netbanking Website Login, and Mobile Banking PIN 
 | Field | Type | Notes |
 |---|---|---|
 | Bank / App Name | text | |
-| Mobile Number | text | |
+| Mobile Number | text [link] | |
 | Customer ID | text | optional |
 | Login PIN | password | |
 | Transaction PIN (MPIN) | password | |
@@ -126,7 +130,7 @@ with its related Payment Card, netbanking Website Login, and Mobile Banking PIN 
 | Field | Type | Notes |
 |---|---|---|
 | Device Name | text | |
-| IP Address(es) | list | one or more IPs/hostnames |
+| IP Address(es) | list [link] | one or more IPs/hostnames; each gets an open link based on Protocol (http(s) for Web, best-effort ssh/telnet otherwise — see §11.1) |
 | Protocol | select | Web (HTTP/HTTPS), Telnet, SSH, Other |
 | Port | text | optional |
 | Username | text | |
@@ -135,10 +139,10 @@ with its related Payment Card, netbanking Website Login, and Mobile Banking PIN 
 ## Email Account *(new)*
 | Field | Type | Notes |
 |---|---|---|
-| Email Address | text | |
+| Email Address | text [link] | |
 | Password | password | |
-| Recovery Email | text | optional |
-| Recovery Phone | text | optional |
+| Recovery Email | text [link] | optional |
+| Recovery Phone | text [link] | optional |
 | IMAP / SMTP Host | text | optional |
 
 ## Identity Document *(new)*

@@ -34,6 +34,9 @@ export interface FieldDef {
   optional?: boolean;
   options?: string[];
   rows?: number;
+  // Drives the "open" action shown next to the field (see lib/links.ts). 'url'-type fields
+  // already get an open action via `type`; this covers everything else that's launchable.
+  linkType?: 'email' | 'tel' | 'ssh' | 'network-device-ip';
 }
 
 export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
@@ -42,8 +45,8 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'username', label: 'Username / Email', type: 'text', placeholder: 'you@example.com' },
     { key: 'password', label: 'Password', type: 'password' },
     { key: 'totp', label: 'TOTP Secret', type: 'text', placeholder: 'Optional', optional: true },
-    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true },
-    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true },
+    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true, linkType: 'email' },
+    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true, linkType: 'tel' },
   ],
   Database: [
     { key: 'host', label: 'Host', type: 'text', placeholder: 'db.example.com' },
@@ -60,7 +63,7 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'environment', label: 'Environment', type: 'select', options: ['Production', 'Staging', 'Development', 'Testing'] },
   ],
   SshKey: [
-    { key: 'host', label: 'Host / Server', type: 'text', placeholder: 'server.example.com', optional: true },
+    { key: 'host', label: 'Host / Server', type: 'text', placeholder: 'server.example.com', optional: true, linkType: 'ssh' },
     { key: 'username', label: 'Username', type: 'text', optional: true },
     { key: 'privateKey', label: 'Private Key', type: 'textarea', placeholder: '-----BEGIN RSA PRIVATE KEY-----', rows: 6 },
     { key: 'publicKey', label: 'Public Key', type: 'textarea', placeholder: 'ssh-rsa AAAA…', optional: true, rows: 3 },
@@ -111,24 +114,24 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   ],
   MobileBankingPin: [
     { key: 'bankOrAppName', label: 'Bank / App Name', type: 'text' },
-    { key: 'mobileNumber', label: 'Mobile Number', type: 'text' },
+    { key: 'mobileNumber', label: 'Mobile Number', type: 'text', linkType: 'tel' },
     { key: 'customerId', label: 'Customer ID', type: 'text', optional: true },
     { key: 'loginPin', label: 'Login PIN', type: 'password' },
     { key: 'transactionPin', label: 'Transaction PIN (MPIN)', type: 'password' },
   ],
   NetworkDevice: [
     { key: 'deviceName', label: 'Device Name', type: 'text' },
-    { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.1' },
+    { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.1', linkType: 'network-device-ip' },
     { key: 'protocol', label: 'Protocol', type: 'select', options: ['Web', 'Telnet', 'SSH', 'Other'] },
     { key: 'port', label: 'Port', type: 'text', optional: true },
     { key: 'username', label: 'Username', type: 'text' },
     { key: 'password', label: 'Password', type: 'password' },
   ],
   EmailAccount: [
-    { key: 'emailAddress', label: 'Email Address', type: 'text', placeholder: 'you@example.com' },
+    { key: 'emailAddress', label: 'Email Address', type: 'text', placeholder: 'you@example.com', linkType: 'email' },
     { key: 'password', label: 'Password', type: 'password' },
-    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true },
-    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true },
+    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true, linkType: 'email' },
+    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true, linkType: 'tel' },
     { key: 'imapSmtpHost', label: 'IMAP / SMTP Host', type: 'text', optional: true },
   ],
   IdentityDocument: [

@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, LayoutDashboard, Key, FolderOpen, Boxes, Users, Tag, Settings, LogOut, Shield, Share2 } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Key, FolderOpen, Users, Tag, Settings, LogOut, Shield, Share2 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import api from '@/api/client';
@@ -11,7 +11,6 @@ const navItems = [
   { to: '/credentials', icon: Key, label: 'Credentials' },
   { to: '/shares', icon: Share2, label: 'Shared' },
   { to: '/folders', icon: FolderOpen, label: 'Folders' },
-  { to: '/credential-groups', icon: Boxes, label: 'Credential Groups' },
   { to: '/groups', icon: Users, label: 'Teams' },
   { to: '/tags', icon: Tag, label: 'Tags' },
 ];

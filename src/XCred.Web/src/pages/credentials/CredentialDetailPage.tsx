@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Edit2, Trash2, Copy, Eye, EyeOff, Share2, ArrowLeft,
-  Check, Clock, Tag, Paperclip, Users, Upload, X, Download, Folder, Boxes, ExternalLink,
+  Check, Clock, Tag, Paperclip, Users, Upload, X, Download, Folder, Boxes, ExternalLink, Mail, Phone, Terminal,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { decryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
+import type { FieldDef } from '@/lib/vault';
 import { decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
-import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime, isValidUrl } from '@/lib/utils';
+import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { computeFieldLink, openSmartLink, linkTooltip, networkDeviceLink } from '@/lib/links';
 
 interface CredentialDetail {
   id: string; type: string; encryptedData: string; dataIv: string; encryptedCredentialKey: string;
@@ -271,7 +273,7 @@ export default function CredentialDetailPage() {
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">
             <Share2 className="w-4 h-4" /> Share
           </button>
-          <button onClick={() => navigate(`/credentials/${id}/edit`)}
+          <button onClick={() => navigate(`/credentials/${id}/edit?returnTo=${encodeURIComponent(`/credentials/${id}`)}`)}
             className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors">
             <Edit2 className="w-4 h-4" /> Edit
           </button>
@@ -290,13 +292,30 @@ export default function CredentialDetailPage() {
           const isHidden = hidden[field.key] ?? false;
           const listItems = field.type === 'list' ? safeParseList(value) : null;
           const displayValue = listItems ? listItems.join(', ') : value;
+          const linkHref = !listItems ? computeFieldLink(field, value, fields) : null;
           return (
             <div key={field.key} data-field={field.key} className="px-5 py-3.5 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">{field.label}</p>
                 {listItems ? (
-                  <ul className="text-sm text-slate-800 mt-0.5 space-y-0.5">
-                    {listItems.map((item, i) => <li key={i} className="break-all">{item}</li>)}
+                  <ul className="text-sm text-slate-800 mt-0.5 space-y-1">
+                    {listItems.map((item, i) => {
+                      const itemHref = field.linkType === 'network-device-ip'
+                        ? networkDeviceLink(fields.protocol, item, fields.port)
+                        : null;
+                      return (
+                        <li key={i} className="flex items-center gap-1.5">
+                          <span className="break-all">{item}</span>
+                          {itemHref && (
+                            <button onClick={() => openSmartLink(itemHref)}
+                              className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
+                              title="Open — Telnet/SSH need a registered handler app to work">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p className={cn(
@@ -315,10 +334,10 @@ export default function CredentialDetailPage() {
                     {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                 )}
-                {field.type === 'url' && isValidUrl(value) && (
-                  <button onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Open in new tab">
-                    <ExternalLink className="w-4 h-4" />
+                {linkHref && (
+                  <button onClick={() => openSmartLink(linkHref)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title={linkTooltip(field)}>
+                    <FieldLinkIcon field={field} />
                   </button>
                 )}
                 <button onClick={() => copy(displayValue, field.key)}
@@ -540,6 +559,16 @@ export default function CredentialDetailPage() {
       )}
     </div>
   );
+}
+
+function FieldLinkIcon({ field }: { field: FieldDef }) {
+  if (field.type === 'url') return <ExternalLink className="w-4 h-4" />;
+  switch (field.linkType) {
+    case 'email': return <Mail className="w-4 h-4" />;
+    case 'tel': return <Phone className="w-4 h-4" />;
+    case 'ssh': return <Terminal className="w-4 h-4" />;
+    default: return <ExternalLink className="w-4 h-4" />;
+  }
 }
 
 function safeParseList(value: string): string[] | null {

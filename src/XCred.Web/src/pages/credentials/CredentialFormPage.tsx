@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown, ExternalLink } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown, ExternalLink, Mail, Phone, Terminal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
@@ -8,6 +8,7 @@ import { encryptCredentialData, decryptCredentialData, CREDENTIAL_FIELDS, CREDEN
 import type { FieldDef } from '@/lib/vault';
 import { credentialTypeLabel, credentialTypeIcon, isValidUrl } from '@/lib/utils';
 import { passwordStrength } from '@/lib/crypto';
+import { computeFieldLink, openSmartLink, linkTooltip, networkDeviceLink } from '@/lib/links';
 import PasswordGeneratorModal from './components/PasswordGeneratorModal';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,7 @@ interface CustomField { label: string; value: string; fieldType: 'text' | 'passw
 export default function CredentialFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const isEdit = Boolean(id);
 
   const { publicKey, privateKey } = useAuthStore();
@@ -93,6 +95,19 @@ export default function CredentialFormPage() {
     setFields(defaults);
   }, [type, isEdit]);
 
+  // Pre-select folder/credential-group/tag when arriving via "Add Credential" from that
+  // folder/group/tag's own page (e.g. /credentials/new?groupId=...)
+  useEffect(() => {
+    if (isEdit) return;
+    const groupId = searchParams.get('groupId');
+    const folderIdParam = searchParams.get('folderId');
+    const tagId = searchParams.get('tagId');
+    if (groupId) setCredentialGroupId(groupId);
+    if (folderIdParam) setFolderId(folderIdParam);
+    if (tagId) setSelectedTagIds(prev => prev.includes(tagId) ? prev : [...prev, tagId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit]);
+
   const setField = (key: string, value: string) => setFields(prev => ({ ...prev, [key]: value }));
 
   const toggleHidden = (key: string) => setHidden(prev => ({ ...prev, [key]: !prev[key] }));
@@ -136,7 +151,9 @@ export default function CredentialFormPage() {
         await api.post('/credentials', body);
         toast.success('Credential saved securely.');
       }
-      navigate('/credentials');
+      // Return to wherever the user came from (e.g. the folder/tag/group they clicked
+      // "Add Credential" from) rather than always dropping them on the main Credentials list.
+      navigate(searchParams.get('returnTo') || '/credentials');
     } catch (err: any) {
       toast.error(err.response?.data?.error?.message ?? 'Failed to save credential.');
     } finally {
@@ -191,7 +208,7 @@ export default function CredentialFormPage() {
 
           {/* Type-specific fields */}
           {typeFields.map(field => (
-            <FormField key={field.key} field={field} value={fields[field.key] ?? ''}
+            <FormField key={field.key} field={field} value={fields[field.key] ?? ''} allValues={fields}
               onChange={v => setField(field.key, v)}
               hidden={field.type === 'password' ? (hidden[field.key] ?? true) : false}
               onToggleHidden={() => toggleHidden(field.key)}
@@ -300,7 +317,7 @@ export default function CredentialFormPage() {
               </select>
             </div>
             {allCredentialGroups.length === 0 && (
-              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <a href="/credential-groups" className="text-indigo-600 hover:underline">Create one</a> to bundle related credentials (e.g. a bank's cards and logins).</p>
+              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <a href="/credentials" className="text-indigo-600 hover:underline">Create one</a> to bundle related credentials (e.g. a bank's cards and logins).</p>
             )}
           </div>
 
@@ -336,11 +353,23 @@ export default function CredentialFormPage() {
   );
 }
 
-function FormField({ field, value, onChange, hidden, onToggleHidden, onGeneratePassword }: {
-  field: FieldDef; value: string; onChange: (v: string) => void;
+function LinkIcon({ field }: { field: FieldDef }) {
+  if (field.type === 'url') return <ExternalLink className="w-4 h-4" />;
+  switch (field.linkType) {
+    case 'email': return <Mail className="w-4 h-4" />;
+    case 'tel': return <Phone className="w-4 h-4" />;
+    case 'ssh': return <Terminal className="w-4 h-4" />;
+    default: return <ExternalLink className="w-4 h-4" />;
+  }
+}
+
+function FormField({ field, value, allValues, onChange, hidden, onToggleHidden, onGeneratePassword }: {
+  field: FieldDef; value: string; allValues: Record<string, string>; onChange: (v: string) => void;
   hidden: boolean; onToggleHidden: () => void; onGeneratePassword: () => void;
 }) {
   const strength = field.type === 'password' && value ? passwordStrength(value) : null;
+  const linkHref = computeFieldLink(field, value, allValues);
+  const hasLinkableType = field.type === 'url' || !!field.linkType;
 
   return (
     <div data-field={field.key}>
@@ -363,14 +392,18 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
           placeholder={field.placeholder}
           className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-mono" />
       ) : field.type === 'list' ? (
-        <ListField value={value} onChange={onChange} placeholder={field.placeholder} />
+        <ListField value={value} onChange={onChange} placeholder={field.placeholder}
+          linkResolver={field.linkType === 'network-device-ip'
+            ? (ip: string) => networkDeviceLink(allValues.protocol, ip, allValues.port)
+            : undefined}
+        />
       ) : (
         <div className="relative">
           <input name={field.key} value={value} onChange={e => onChange(e.target.value)}
             type={field.type === 'password' ? (hidden ? 'password' : 'text') : field.type === 'url' ? 'text' : field.type}
             placeholder={field.placeholder}
             className={cn('w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500',
-              field.type === 'password' ? 'pr-20 font-mono' : field.type === 'url' ? 'pr-9' : '')} />
+              field.type === 'password' ? 'pr-20 font-mono' : hasLinkableType ? 'pr-9' : '')} />
           {field.type === 'password' && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <button type="button" onClick={onToggleHidden} className="p-1 text-slate-400 hover:text-slate-600">
@@ -381,13 +414,13 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
               </button>
             </div>
           )}
-          {field.type === 'url' && value.trim() && (
+          {hasLinkableType && value.trim() && (
             <button type="button"
-              onClick={() => { if (isValidUrl(value)) window.open(value, '_blank', 'noopener,noreferrer'); }}
-              disabled={!isValidUrl(value)}
-              title={isValidUrl(value) ? 'Open in new tab' : 'Enter a valid http(s) URL'}
+              onClick={() => { if (linkHref) openSmartLink(linkHref); }}
+              disabled={!linkHref}
+              title={linkHref ? linkTooltip(field) : field.type === 'url' ? 'Enter a valid http(s) URL' : 'Enter a value first'}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-slate-400">
-              <ExternalLink className="w-4 h-4" />
+              <LinkIcon field={field} />
             </button>
           )}
         </div>
@@ -408,7 +441,10 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
   );
 }
 
-function ListField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+function ListField({ value, onChange, placeholder, linkResolver }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+  linkResolver?: (item: string) => string | null;
+}) {
   let items: string[] = [];
   try { items = JSON.parse(value || '[]'); } catch { items = []; }
 
@@ -416,17 +452,31 @@ function ListField({ value, onChange, placeholder }: { value: string; onChange: 
 
   return (
     <div className="space-y-2">
-      {items.map((item, i) => (
-        <div key={i} className="flex gap-2">
-          <input value={item} placeholder={placeholder}
-            onChange={e => update(items.map((v, j) => j === i ? e.target.value : v))}
-            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          <button type="button" onClick={() => update(items.filter((_, j) => j !== i))}
-            className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      ))}
+      {items.map((item, i) => {
+        const href = linkResolver?.(item);
+        return (
+          <div key={i} className="flex gap-2">
+            <div className="relative flex-1">
+              <input value={item} placeholder={placeholder}
+                onChange={e => update(items.map((v, j) => j === i ? e.target.value : v))}
+                className={cn('w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500',
+                  linkResolver && item.trim() ? 'pr-9' : '')} />
+              {linkResolver && item.trim() && (
+                <button type="button" onClick={() => { if (href) openSmartLink(href); }}
+                  disabled={!href}
+                  title={href ? 'Open — Telnet/SSH need a registered handler app to work' : 'Select a protocol first'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30">
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <button type="button" onClick={() => update(items.filter((_, j) => j !== i))}
+              className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })}
       <button type="button" onClick={() => update([...items, ''])}
         className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
         <Plus className="w-3.5 h-3.5" /> Add {items.length > 0 ? 'another' : 'value'}

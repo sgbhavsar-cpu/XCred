@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Tag, ArrowRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { cn } from '@/lib/utils';
+import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
+import CredentialRow from '@/components/CredentialRow';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
 
@@ -11,8 +13,11 @@ const PRESET_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf
 
 export default function TagsPage() {
   const navigate = useNavigate();
+  const { credentials, decrypted, loading: credsLoading, deleteCredential } = useDecryptedCredentials();
+
   const [tags, setTags] = useState<TagItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tagsLoading, setTagsLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
@@ -21,10 +26,11 @@ export default function TagsPage() {
   const [adding, setAdding] = useState(false);
 
   const load = async () => {
+    setTagsLoading(true);
     try {
       const res = await api.get('/tags');
       setTags(res.data.data);
-    } finally { setLoading(false); }
+    } finally { setTagsLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -60,6 +66,31 @@ export default function TagsPage() {
     } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to create.'); }
   };
 
+  const toggleExpand = (id: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const handleDeleteCredential = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this credential? This cannot be undone.')) return;
+    try {
+      await deleteCredential(id);
+      toast.success('Credential deleted.');
+    } catch { toast.error('Failed to delete.'); }
+  };
+
+  const byTag = new Map<string, typeof credentials>();
+  for (const c of credentials) {
+    for (const t of c.tags) {
+      if (!byTag.has(t.id)) byTag.set(t.id, []);
+      byTag.get(t.id)!.push(c);
+    }
+  }
+
+  const loading = tagsLoading || credsLoading;
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -91,10 +122,10 @@ export default function TagsPage() {
               onKeyDown={e => e.key === 'Enter' && createTag()}
               autoFocus
               className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <button onClick={createTag} className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+            <button onClick={createTag} title="Create tag" className="px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
               <Check className="w-4 h-4" />
             </button>
-            <button onClick={() => { setAdding(false); setNewName(''); }} className="px-3 py-2 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
+            <button onClick={() => { setAdding(false); setNewName(''); }} title="Cancel" className="px-3 py-2 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -111,70 +142,94 @@ export default function TagsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-          {tags.map(tag => (
-            <div key={tag.id} className="flex items-center gap-4 px-5 py-4">
-              {editingId === tag.id ? (
-                <>
-                  {/* Color picker in edit mode */}
-                  <div className="flex gap-1.5 flex-wrap">
-                    {PRESET_COLORS.map(c => (
-                      <button key={c} type="button" onClick={() => setEditColor(c)}
-                        className={cn('w-5 h-5 rounded-full transition-all', editColor === c && 'ring-2 ring-offset-1 ring-slate-700 scale-110')}
-                        style={{ backgroundColor: c }} />
-                    ))}
-                  </div>
-                  <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
-                    className="flex-1 px-3 py-1.5 border border-indigo-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                  <button onClick={saveEdit} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"><Check className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => setEditingId(null)} className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-3.5 h-3.5" /></button>
-                </>
-              ) : (
-                <>
-                  {/* Color dot + pill preview */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <span className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-800">{tag.name}</span>
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full font-medium text-white"
-                          style={{ backgroundColor: tag.color }}
-                        >
-                          {tag.name}
-                        </span>
+          {tags.map(tag => {
+            const members = byTag.get(tag.id) ?? [];
+            const isOpen = expanded.has(tag.id);
+            const isEditing = editingId === tag.id;
+            return (
+              <div key={tag.id}>
+                <div onClick={() => !isEditing && toggleExpand(tag.id)}
+                  className={cn('flex items-center gap-4 px-5 py-4', !isEditing && 'cursor-pointer hover:bg-slate-50 transition-colors')}>
+                  {isEditing ? (
+                    <>
+                      {/* Color picker in edit mode */}
+                      <div className="flex gap-1.5 flex-wrap">
+                        {PRESET_COLORS.map(c => (
+                          <button key={c} type="button" onClick={e => { e.stopPropagation(); setEditColor(c); }}
+                            className={cn('w-5 h-5 rounded-full transition-all', editColor === c && 'ring-2 ring-offset-1 ring-slate-700 scale-110')}
+                            style={{ backgroundColor: c }} />
+                        ))}
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {tag.credentialCount === 0
-                          ? 'No credentials'
-                          : `${tag.credentialCount} credential${tag.credentialCount !== 1 ? 's' : ''}`}
-                      </p>
-                    </div>
-                  </div>
+                      <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus
+                        onClick={e => e.stopPropagation()}
+                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                        className="flex-1 px-3 py-1.5 border border-indigo-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                      <button onClick={e => { e.stopPropagation(); saveEdit(); }} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                      <button onClick={e => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                    </>
+                  ) : (
+                    <>
+                      {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
+                      {/* Color dot + pill preview */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: tag.color }} />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-800">{tag.name}</span>
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full font-medium text-white"
+                              style={{ backgroundColor: tag.color }}
+                            >
+                              {tag.name}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {members.length === 0
+                              ? 'No credentials'
+                              : `${members.length} credential${members.length !== 1 ? 's' : ''}`}
+                          </p>
+                        </div>
+                      </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {/* View credentials — prominent button */}
-                    <button
-                      onClick={() => navigate(`/credentials?tag=${tag.id}`)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-40"
-                      disabled={tag.credentialCount === 0}
-                    >
-                      <ArrowRight className="w-3.5 h-3.5" />
-                      View Credentials
-                    </button>
-                    <button onClick={() => startEdit(tag)}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit">
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => deleteTag(tag.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={e => { e.stopPropagation(); navigate(`/credentials/new?tagId=${tag.id}&returnTo=${encodeURIComponent('/tags')}`); }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Add credential with this tag">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); startEdit(tag); }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit">
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); deleteTag(tag.id); }}
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {isOpen && !isEditing && (
+                  members.length === 0 ? (
+                    <div className="px-5 py-4 pl-14 text-xs text-slate-400 bg-slate-50/50">
+                      No credentials with this tag yet. <button onClick={() => navigate(`/credentials/new?tagId=${tag.id}&returnTo=${encodeURIComponent('/tags')}`)} className="text-indigo-600 hover:underline">Add one</button>.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {members.map(cred => (
+                        <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
+                          onOpen={() => navigate(`/credentials/${cred.id}`)}
+                          onDelete={e => handleDeleteCredential(cred.id, e)}
+                          onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                          indent
+                        />
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

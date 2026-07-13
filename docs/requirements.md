@@ -323,6 +323,27 @@ All the following events are logged with: **timestamp, user, IP address, credent
 - Filters: by type, by tag, by folder, by group, by expiry status, by owner.
 - Results update in real-time as the user types.
 
+### 11.1 Smart "Open" Links
+
+Wherever a field's value is directly launchable, the UI shows an inline open-action icon
+next to it (in both the credential form and the read-only detail view). What's offered is
+scoped to what actually works reliably in a browser — researched against the IANA URI scheme
+registry and current browser behavior:
+
+| Scheme | Used for | Reliability |
+|---|---|---|
+| `http(s)://` | Website Login URL; Network Device IP when Protocol = Web (guesses `https` only when the port is 443, `http` otherwise) | **Reliable** — native browser navigation, opens in a new tab. |
+| `mailto:` | Recovery Email fields, Email Account address | **Reliable** — one of the browser-safelisted schemes; opens the OS default mail client. |
+| `tel:` | Recovery Phone, Mobile Banking mobile number | **Reliable** on mobile; a no-op on most desktops without a calling/VoIP app registered, but harmless. |
+| `ssh://` | SSH Key host (combined with the Username field if set); Network Device IP when Protocol = SSH | **Best-effort** — a valid URI scheme, but neither Chrome nor Edge/Firefox ship a built-in handler. Only works if the user has registered a local handler (e.g. the Windows OpenSSH registry method, or a tool like PuTTY that registers itself). Clicking it is harmless when nothing is registered — the browser just does nothing or shows its own "can't open this link" prompt. |
+| `telnet://` | Network Device IP when Protocol = Telnet | **Best-effort**, same caveat as `ssh://` (RFC 4248; modern browsers dropped native telnet support and require an external handler). |
+
+No link is offered for fields where there's nothing meaningful a browser could launch (Wi-Fi
+credentials, database connection strings, card numbers, etc.) — `registerProtocolHandler()`
+only lets *websites* register as handlers for schemes like `mailto`/`tel`; it has no bearing on
+launching local desktop apps (SSH clients, RDP, etc.) from a web page, so those remain
+best-effort links dependent on the user's own OS configuration.
+
 ---
 
 ## 12. Backup & Restore

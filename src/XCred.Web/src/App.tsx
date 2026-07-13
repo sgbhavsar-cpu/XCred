@@ -12,7 +12,6 @@ import SharesPage from '@/pages/shares/SharesPage';
 import TagsPage from '@/pages/tags/TagsPage';
 import FoldersPage from '@/pages/folders/FoldersPage';
 import GroupsPage from '@/pages/groups/GroupsPage';
-import CredentialGroupsPage from '@/pages/credential-groups/CredentialGroupsPage';
 import CredentialGroupDetailPage from '@/pages/credential-groups/CredentialGroupDetailPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import AdminPage from '@/pages/admin/AdminPage';
@@ -52,7 +51,6 @@ export default function App() {
 
         {/* Organisation */}
         <Route path="/folders" element={<RequireAuth><FoldersPage /></RequireAuth>} />
-        <Route path="/credential-groups" element={<RequireAuth><CredentialGroupsPage /></RequireAuth>} />
         <Route path="/credential-groups/:id" element={<RequireAuth><CredentialGroupDetailPage /></RequireAuth>} />
         <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
         <Route path="/tags" element={<RequireAuth><TagsPage /></RequireAuth>} />

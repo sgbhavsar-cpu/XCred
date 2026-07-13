@@ -54,7 +54,7 @@ export default function CredentialGroupDetailPage() {
       }
     } catch {
       toast.error('Failed to load credential group.');
-      navigate('/credential-groups');
+      navigate('/credentials');
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ export default function CredentialGroupDetailPage() {
     try {
       await api.delete(`/credential-groups/${group.id}`);
       toast.success('Credential group deleted.');
-      navigate('/credential-groups');
+      navigate('/credentials');
     } catch {
       toast.error('Failed to delete credential group.');
     }
@@ -133,7 +133,7 @@ export default function CredentialGroupDetailPage() {
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-start gap-3">
-          <button onClick={() => navigate('/credential-groups')} className="mt-1 text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={() => navigate('/credentials')} className="mt-1 text-slate-400 hover:text-slate-600 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
@@ -152,10 +152,16 @@ export default function CredentialGroupDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
         <div className="px-5 py-3.5 flex items-center justify-between border-b border-slate-100">
           <span className="font-medium text-slate-800 text-sm">Credentials in this group</span>
-          <button onClick={openAddModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">
-            <Plus className="w-3.5 h-3.5" /> Add Existing Credential
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => navigate(`/credentials/new?groupId=${group.id}&returnTo=${encodeURIComponent(`/credential-groups/${group.id}`)}`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add New Credential
+            </button>
+            <button onClick={openAddModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add Existing Credential
+            </button>
+          </div>
         </div>
 
         {group.credentials.length === 0 ? (
