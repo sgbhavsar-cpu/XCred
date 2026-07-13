@@ -22,6 +22,9 @@ public class Credential
     public Guid? FolderId { get; set; }
     public Folder? Folder { get; set; }
 
+    public Guid? CredentialGroupId { get; set; }
+    public CredentialGroup? CredentialGroup { get; set; }
+
     public bool IsDeleted { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

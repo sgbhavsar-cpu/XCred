@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Filter, Eye, Trash2, RefreshCw, FolderOpen, Tag, ArrowLeft, X } from 'lucide-react';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
-import { decryptCredentialData } from '@/lib/vault';
+import { decryptCredentialData, CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel, credentialTypeIcon, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -23,7 +23,7 @@ interface CredentialItem {
 interface FolderInfo { id: string; name: string }
 interface TagInfo { id: string; name: string; color: string }
 
-const ALL_TYPES = ['WebsiteLogin','Database','ApiKey','SshKey','CreditCard','SecureNote','WiFi','SoftwareLicense','Certificate','EnvironmentVariables','Generic'];
+const ALL_TYPES = CREDENTIAL_TYPES;
 
 export default function CredentialsPage() {
   const navigate = useNavigate();

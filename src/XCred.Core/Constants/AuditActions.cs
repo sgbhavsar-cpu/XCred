@@ -32,6 +32,10 @@ public static class AuditActions
     public const string GroupMemberAdded = "GroupMemberAdded";
     public const string GroupMemberRemoved = "GroupMemberRemoved";
 
+    public const string CredentialGroupCreated = "CredentialGroupCreated";
+    public const string CredentialGroupUpdated = "CredentialGroupUpdated";
+    public const string CredentialGroupDeleted = "CredentialGroupDeleted";
+
     public const string BackupExported = "BackupExported";
     public const string BackupImported = "BackupImported";
 }

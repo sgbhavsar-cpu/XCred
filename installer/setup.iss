@@ -50,13 +50,10 @@ Name: "{group}\{#AppName} (Open in Browser)"; Filename: "{code:GetBrowserUrl}"
 Name: "{group}\Uninstall {#AppName}";         Filename: "{uninstallexe}"
 
 ; ── Run after install ─────────────────────────────────────────────────────────
+; NOTE: the IIS/configuration PowerShell script is launched from [Code]
+; (CurStepChanged → ssPostInstall) so its exit code is checked and failures are
+; reported to the user instead of being silently ignored.
 [Run]
-Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{tmp}\Setup-XCred.ps1"" -ConfigFile ""{tmp}\xcred-install.json"""; \
-    StatusMsg: "Configuring IIS and application settings..."; \
-    Flags: runhidden waituntilterminated; \
-    Description: "Configure IIS and XCred"
-
 Filename: "{code:GetBrowserUrl}"; \
     Description: "Open {#AppName} in browser"; \
     Flags: shellexec postinstall skipifsilent nowait
@@ -65,6 +62,7 @@ Filename: "{code:GetBrowserUrl}"; \
 [UninstallRun]
 Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Uninstall-XCred.ps1"" -SiteName ""{code:GetStoredSiteName}"""; \
+    RunOnceId: "RemoveXCredSite"; \
     Flags: runhidden waituntilterminated
 
 ; ── Registry (store site name for uninstall) ──────────────────────────────────
@@ -274,11 +272,49 @@ begin
 end;
 
 // ── Write config JSON + kick off PowerShell setup ────────────────────────────
+// ── Run the IIS/config PowerShell script and report success or failure ───────
+procedure RunSetupScript;
+var
+  ResultCode: Integer;
+  ScriptPath, ConfigPath, LogPath, Params: String;
+begin
+  ScriptPath := ExpandConstant('{tmp}\Setup-XCred.ps1');
+  ConfigPath := ExpandConstant('{tmp}\xcred-install.json');
+  LogPath    := ExpandConstant('{%TEMP}\XCred-Install.log');
+  Params     := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath +
+                '" -ConfigFile "' + ConfigPath + '"';
+
+  WizardForm.StatusLabel.Caption := 'Configuring IIS and application settings...';
+
+  if not Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    MsgBox('Could not launch the IIS configuration script (PowerShell).' + #13#10 +
+           'XCred files were copied, but IIS was not configured.', mbError, MB_OK);
+    Exit;
+  end;
+
+  if ResultCode <> 0 then
+    MsgBox('XCred files were installed, but configuring IIS failed (exit code '
+           + IntToStr(ResultCode) + ').' + #13#10 + #13#10 +
+           'See the log for details:' + #13#10 + '    ' + LogPath + #13#10 + #13#10 +
+           'Common causes: the .NET 10 Hosting Bundle is not installed, or the '
+           + 'chosen port is in use. Fix the issue and re-run the installer.',
+           mbError, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath, Json: String;
   InstallDir:       String;
 begin
+  // After files are copied, run the IIS configuration script and report result.
+  if CurStep = ssPostInstall then
+  begin
+    RunSetupScript;
+    Exit;
+  end;
+
+  // At install start, write the config JSON the script will read.
   if CurStep <> ssInstall then Exit;
 
   InstallDir := ExpandConstant('{app}');

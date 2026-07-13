@@ -8,5 +8,6 @@ public class CreateCredentialRequest
     public string EncryptedCredentialKey { get; set; } = string.Empty;
     public DateTime? ExpiryDate { get; set; }
     public Guid? FolderId { get; set; }
+    public Guid? CredentialGroupId { get; set; }
     public List<Guid> TagIds { get; set; } = [];
 }

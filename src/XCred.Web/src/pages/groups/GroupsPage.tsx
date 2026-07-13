@@ -47,7 +47,7 @@ export default function GroupsPage() {
       await api.post('/groups', { name: newName.trim(), description: newDesc || null, memberIds: [] });
       await load();
       setNewName(''); setNewDesc(''); setShowCreate(false);
-      toast.success('Group created.');
+      toast.success('Team created.');
     } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to create.'); }
   };
 
@@ -61,7 +61,7 @@ export default function GroupsPage() {
   };
 
   const removeMember = async (groupId: string, userId: string, username: string) => {
-    if (!confirm(`Remove ${username} from this group?`)) return;
+    if (!confirm(`Remove ${username} from this team?`)) return;
     try {
       await api.delete(`/groups/${groupId}/members/${userId}`);
       await load();
@@ -70,11 +70,11 @@ export default function GroupsPage() {
   };
 
   const deleteGroup = async (id: string) => {
-    if (!confirm('Delete this group?')) return;
+    if (!confirm('Delete this team?')) return;
     try {
       await api.delete(`/groups/${id}`);
       await load();
-      toast.success('Group deleted.');
+      toast.success('Team deleted.');
     } catch { toast.error('Failed to delete.'); }
   };
 
@@ -82,18 +82,18 @@ export default function GroupsPage() {
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Groups</h1>
-          <p className="text-slate-500 text-sm">Manage team groups and shared access</p>
+          <h1 className="text-2xl font-bold text-slate-900">Teams</h1>
+          <p className="text-slate-500 text-sm">Manage teams of users and shared access</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-          <Plus className="w-4 h-4" /> New Group
+          <Plus className="w-4 h-4" /> New Team
         </button>
       </div>
 
       {showCreate && (
         <div className="bg-white rounded-xl border border-indigo-200 p-4 mb-4 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-700">Create Group</h3>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Group name" autoFocus
+          <h3 className="text-sm font-semibold text-slate-700">Create Team</h3>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Team name" autoFocus
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description (optional)"
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -110,8 +110,8 @@ export default function GroupsPage() {
       ) : groups.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No groups yet.</p>
-          <button onClick={() => setShowCreate(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first group →</button>
+          <p className="font-medium">No teams yet.</p>
+          <button onClick={() => setShowCreate(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first team →</button>
         </div>
       ) : (
         <div className="space-y-3">

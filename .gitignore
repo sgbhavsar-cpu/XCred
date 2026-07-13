@@ -48,3 +48,7 @@ Thumbs.db
 
 # ── Claude Code (local dev assistant config) ─────────────────────────────────
 .claude/
+
+# ── Build artifacts (regenerate via scripts/publish.ps1 / Inno Setup) ─────────
+/publish/
+installer/*.exe

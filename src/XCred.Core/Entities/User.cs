@@ -7,7 +7,7 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
 
-    // Salt for Argon2id key derivation — stored server-side, never used for decryption server-side
+    // Salt for client-side PBKDF2-SHA256 key derivation — stored server-side, never used for decryption server-side
     public string KeyDerivationSalt { get; set; } = string.Empty;
 
     // Asymmetric key pair for credential sharing (envelope encryption)
@@ -31,6 +31,7 @@ public class User
 
     public ICollection<Credential> Credentials { get; set; } = [];
     public ICollection<Folder> Folders { get; set; } = [];
+    public ICollection<CredentialGroup> CredentialGroups { get; set; } = [];
     public ICollection<Tag> Tags { get; set; } = [];
     public ICollection<GroupMember> GroupMemberships { get; set; } = [];
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];

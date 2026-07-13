@@ -1,0 +1,12 @@
+**/node_modules
+**/bin
+**/obj
+**/dist
+src/XCred.Web/dist
+publish
+installer
+docs
+.git
+.claude
+test-results
+playwright-report

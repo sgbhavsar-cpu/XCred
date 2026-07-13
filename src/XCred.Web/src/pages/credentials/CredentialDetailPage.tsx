@@ -2,23 +2,27 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Edit2, Trash2, Copy, Eye, EyeOff, Share2, ArrowLeft,
-  Check, Clock, Tag, Paperclip, Users, Upload, X, Download, Folder,
+  Check, Clock, Tag, Paperclip, Users, Upload, X, Download, Folder, Boxes, ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { decryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
 import { decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
-import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } from '@/lib/utils';
+import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime, isValidUrl } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 interface CredentialDetail {
   id: string; type: string; encryptedData: string; dataIv: string; encryptedCredentialKey: string;
-  expiryDate: string | null; folderId: string | null; folderName: string | null; ownerId: string; ownerUsername: string;
+  expiryDate: string | null; folderId: string | null; folderName: string | null;
+  credentialGroupId: string | null; credentialGroupName: string | null;
+  ownerId: string; ownerUsername: string;
   createdAt: string; updatedAt: string;
   tags: Array<{ id: string; name: string; color: string }>;
   attachments: Array<{ id: string; encryptedFileName: string; fileNameIv: string; encryptedMimeType: string; mimeTypeIv: string; fileSizeBytes: number; uploadedAt: string }>;
 }
+
+interface AttachmentMeta { name: string; mime: string }
 
 interface PeerUser { id: string; username: string; email: string; publicKey: string }
 
@@ -37,6 +41,7 @@ export default function CredentialDetailPage() {
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [attachmentMeta, setAttachmentMeta] = useState<Record<string, AttachmentMeta>>({});
 
   // Share modal state
   const [showShare, setShowShare] = useState(false);
@@ -66,6 +71,22 @@ export default function CredentialDetailPage() {
       });
       setFields(fd);
       setHidden(defHidden);
+
+      if (c.attachments.length > 0) {
+        const credentialKey = await decryptKeyWithPrivateKey(privateKey, c.encryptedCredentialKey);
+        const metaEntries = await Promise.all(c.attachments.map(async att => {
+          const name = att.fileNameIv
+            ? await decrypt(credentialKey, att.encryptedFileName, att.fileNameIv).catch(() => 'Encrypted file')
+            : 'Encrypted file';
+          const mime = att.mimeTypeIv
+            ? await decrypt(credentialKey, att.encryptedMimeType, att.mimeTypeIv).catch(() => 'application/octet-stream')
+            : 'application/octet-stream';
+          return [att.id, { name, mime }] as const;
+        }));
+        setAttachmentMeta(Object.fromEntries(metaEntries));
+      } else {
+        setAttachmentMeta({});
+      }
     } catch {
       toast.error('Failed to decrypt credential.');
       navigate('/credentials');
@@ -186,19 +207,24 @@ export default function CredentialDetailPage() {
     if (!privateKey || !cred) return;
     try {
       const res = await api.get(`/credentials/${id}/attachments/${attId}`);
-      const { encryptedData, dataIv, encryptedFileName, fileNameIv } = res.data.data;
+      const { encryptedData, dataIv, encryptedFileName, fileNameIv, encryptedMimeType, mimeTypeIv } = res.data.data;
 
       const credentialKey = await decryptKeyWithPrivateKey(privateKey, cred.encryptedCredentialKey);
       const fileBase64 = await decrypt(credentialKey, encryptedData, dataIv);
       const fileName = fileNameIv
         ? await decrypt(credentialKey, encryptedFileName, fileNameIv).catch(() => 'attachment')
         : 'attachment';
+      const mimeType = mimeTypeIv
+        ? await decrypt(credentialKey, encryptedMimeType, mimeTypeIv).catch(() => 'application/octet-stream')
+        : 'application/octet-stream';
 
       const binary = atob(fileBase64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-      const blob = new Blob([bytes]);
+      // Preserving the original MIME type keeps the browser from guessing an unrelated
+      // extension (e.g. defaulting to .txt) for the downloaded file.
+      const blob = new Blob([bytes], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = fileName; a.click();
@@ -234,7 +260,7 @@ export default function CredentialDetailPage() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-2xl">{credentialTypeIcon(cred.type)}</span>
-              <h1 className="text-2xl font-bold text-slate-900">{name}</h1>
+              <h1 data-field="name" className="text-2xl font-bold text-slate-900">{name}</h1>
               {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Expired</span>}
             </div>
             <p className="text-slate-500 text-sm mt-0.5">{credentialTypeLabel(cred.type)}</p>
@@ -260,19 +286,27 @@ export default function CredentialDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden mb-4">
         {typeFields.map(field => {
           const value = fields[field.key] ?? '';
-          if (!value) return null;
+          if (!value || (field.type === 'list' && value === '[]')) return null;
           const isHidden = hidden[field.key] ?? false;
+          const listItems = field.type === 'list' ? safeParseList(value) : null;
+          const displayValue = listItems ? listItems.join(', ') : value;
           return (
-            <div key={field.key} className="px-5 py-3.5 flex items-center justify-between gap-4">
+            <div key={field.key} data-field={field.key} className="px-5 py-3.5 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">{field.label}</p>
-                <p className={cn(
-                  'text-sm text-slate-800 mt-0.5 break-all',
-                  field.type === 'textarea' && 'whitespace-pre-wrap font-mono text-xs',
-                  isHidden && 'font-mono tracking-widest text-slate-400'
-                )}>
-                  {isHidden ? '•'.repeat(12) : value}
-                </p>
+                {listItems ? (
+                  <ul className="text-sm text-slate-800 mt-0.5 space-y-0.5">
+                    {listItems.map((item, i) => <li key={i} className="break-all">{item}</li>)}
+                  </ul>
+                ) : (
+                  <p className={cn(
+                    'text-sm text-slate-800 mt-0.5 break-all',
+                    field.type === 'textarea' && 'whitespace-pre-wrap font-mono text-xs',
+                    isHidden && 'font-mono tracking-widest text-slate-400'
+                  )}>
+                    {isHidden ? '•'.repeat(12) : value}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {field.type === 'password' && (
@@ -281,7 +315,13 @@ export default function CredentialDetailPage() {
                     {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </button>
                 )}
-                <button onClick={() => copy(value, field.key)}
+                {field.type === 'url' && isValidUrl(value) && (
+                  <button onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Open in new tab">
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                )}
+                <button onClick={() => copy(displayValue, field.key)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
                   {copied[field.key] ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -342,6 +382,16 @@ export default function CredentialDetailPage() {
             <span className="font-medium text-slate-700">{cred.folderName}</span>
           </div>
         )}
+        {cred.credentialGroupName && (
+          <div className="flex items-center gap-2 text-sm">
+            <Boxes className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-slate-500">Credential Group:</span>
+            <button onClick={() => navigate(`/credential-groups/${cred.credentialGroupId}`)}
+              className="font-medium text-indigo-600 hover:underline">
+              {cred.credentialGroupName}
+            </button>
+          </div>
+        )}
         {cred.tags.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             <Tag className="w-3.5 h-3.5 text-slate-400" />
@@ -396,13 +446,15 @@ export default function CredentialDetailPage() {
         ) : (
           <div className="divide-y divide-slate-100">
             {cred.attachments.map(att => (
-              <div key={att.id} className="px-5 py-3 flex items-center justify-between">
+              <div key={att.id} data-testid="attachment-row" className="px-5 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
                     <Paperclip className="w-4 h-4 text-slate-500" />
                   </div>
-                  <div>
-                    <p className="text-sm text-slate-700 font-medium font-mono">Encrypted file</p>
+                  <div className="min-w-0">
+                    <p data-testid="attachment-name" className="text-sm text-slate-700 font-medium truncate" title={attachmentMeta[att.id]?.name}>
+                      {attachmentMeta[att.id]?.name ?? 'Decrypting…'}
+                    </p>
                     <p className="text-xs text-slate-400">
                       {(att.fileSizeBytes / 1024).toFixed(1)} KB · {formatDate(att.uploadedAt)}
                     </p>
@@ -488,4 +540,13 @@ export default function CredentialDetailPage() {
       )}
     </div>
   );
+}
+
+function safeParseList(value: string): string[] | null {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : null;
+  } catch {
+    return null;
+  }
 }

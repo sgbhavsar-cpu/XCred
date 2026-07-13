@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, LayoutDashboard, Key, FolderOpen, Users, Tag, Settings, LogOut, Shield, Share2 } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Key, FolderOpen, Boxes, Users, Tag, Settings, LogOut, Shield, Share2 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import api from '@/api/client';
@@ -11,7 +11,8 @@ const navItems = [
   { to: '/credentials', icon: Key, label: 'Credentials' },
   { to: '/shares', icon: Share2, label: 'Shared' },
   { to: '/folders', icon: FolderOpen, label: 'Folders' },
-  { to: '/groups', icon: Users, label: 'Groups' },
+  { to: '/credential-groups', icon: Boxes, label: 'Credential Groups' },
+  { to: '/groups', icon: Users, label: 'Teams' },
   { to: '/tags', icon: Tag, label: 'Tags' },
 ];
 
@@ -87,8 +88,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {user?.username?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white text-xs font-medium truncate">{user?.username}</p>
-              <p className="text-slate-500 text-xs truncate">{user?.role}</p>
+              <p data-testid="current-username" className="text-white text-xs font-medium truncate">{user?.username}</p>
+              <p data-testid="current-role" className="text-slate-500 text-xs truncate">{user?.role}</p>
             </div>
             <button onClick={handleLogout} title="Sign out"
               className="text-slate-500 hover:text-red-400 transition-colors">

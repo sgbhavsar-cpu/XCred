@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Builds the XCred frontend and backend into the publish/ folder,
@@ -20,6 +20,18 @@ $pubDir  = Join-Path $root 'publish'
 function Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function OK  { Write-Host '    OK' -ForegroundColor Green }
 
+# Run a native command tolerant of stderr output. Under Windows PowerShell 5.1,
+# $ErrorActionPreference='Stop' turns any line a native tool writes to stderr
+# (e.g. Vite's chunk-size warning) into a terminating NativeCommandError even
+# when the tool exits 0. We relax the preference and judge success by exit code.
+function Invoke-Native {
+    param([Parameter(Mandatory)][scriptblock]$Command, [Parameter(Mandatory)][string]$FailMessage)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command } finally { $ErrorActionPreference = $prev }
+    if ($LASTEXITCODE -ne 0) { throw $FailMessage }
+}
+
 Step 'Checking tools'
 foreach ($cmd in 'node', 'npm', 'dotnet') {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
@@ -31,16 +43,14 @@ OK
 Step 'Installing frontend dependencies (npm ci)'
 Push-Location (Join-Path $root 'src\XCred.Web')
 try {
-    & npm ci --silent
-    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+    Invoke-Native { & npm ci --silent } 'npm ci failed'
 } finally { Pop-Location }
 OK
 
 Step 'Building React frontend (npm run build)'
 Push-Location (Join-Path $root 'src\XCred.Web')
 try {
-    & npm run build
-    if ($LASTEXITCODE -ne 0) { throw 'npm run build failed' }
+    Invoke-Native { & npm run build } 'npm run build failed'
     # Vite outputs to src/XCred.Api/wwwroot — confirm
     $wwwroot = Join-Path $root 'src\XCred.Api\wwwroot'
     if (-not (Test-Path $wwwroot)) { throw "Expected wwwroot at $wwwroot but it was not created." }
@@ -49,11 +59,12 @@ OK
 
 Step "Publishing ASP.NET Core API ($Configuration) → publish/"
 if (Test-Path $pubDir) { Remove-Item $pubDir -Recurse -Force }
-& dotnet publish (Join-Path $root 'src\XCred.Api\XCred.Api.csproj') `
-      -c $Configuration `
-      -o $pubDir `
-      --nologo
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+Invoke-Native {
+    & dotnet publish (Join-Path $root 'src\XCred.Api\XCred.Api.csproj') `
+          -c $Configuration `
+          -o $pubDir `
+          --nologo
+} 'dotnet publish failed'
 OK
 
 # Remove any leftover dev files from the publish output

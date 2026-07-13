@@ -1,7 +1,7 @@
 # XCred — Credential Vault Application
 ## Requirements Document
-**Version:** 1.0  
-**Date:** 2026-05-31  
+**Version:** 1.1  
+**Date:** 2026-07-12  
 **Status:** Draft — Pending Review
 
 ---
@@ -28,8 +28,11 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 ## 3. User Management & Authentication
 
 ### 3.1 Registration
-- Users self-register with: **full name, email address, username, login password, and master password**.
-- New accounts are **pending approval by an admin** before first access (to prevent unauthorized self-registration in an org context).
+- Users self-register with: **username, email address, a login password, and a separate master
+  password** (confirmed twice each in the registration form).
+- The **first user ever registered** automatically becomes an **Admin** and is auto-approved
+  (organization bootstrap). Every subsequent registration is **pending approval by an admin**
+  before first access.
 - Admin can deactivate or delete accounts.
 
 ### 3.2 Roles
@@ -39,9 +42,16 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 | **User**  | Manage own credentials, share credentials, participate in groups |
 
 ### 3.3 Login
-- Credentials: **username + login password**.
-- Login password authenticates the user to the application.
-- **Master password** is a separate passphrase used solely for deriving the client-side encryption key — it is never transmitted to or stored on the server.
+- Credentials: **username + login password + master password** (three fields on the login form).
+- **Login password** is sent to the server and checked against a **BCrypt** hash — this is how
+  the app authenticates the user. It never touches encryption.
+- **Master password** is never transmitted. The browser independently runs it through
+  **PBKDF2-SHA256** (client-side only, see §6.2) to derive the AES key that decrypts the
+  user's private key and, in turn, their credential vault.
+- Because these are two independent secrets derived/verified through entirely separate paths,
+  the server cannot derive the encryption key even if it were fully compromised (it never
+  receives the master password at all) — a stronger guarantee than schemes that reuse one
+  password for both roles.
 - Failed login attempts are rate-limited (e.g., 5 attempts → 15-minute lockout).
 - Unsuccessful login attempts are logged in the audit trail.
 
@@ -52,8 +62,8 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 - On logout or session expiry, the in-memory derived encryption key is cleared from the browser.
 
 ### 3.5 Master Password
-- The master password is used client-side to derive an **encryption key** via Argon2id (see Section 6).
-- It is never sent to the server in plaintext or stored anywhere.
+- The master password is used client-side to derive an **encryption key** via PBKDF2-SHA256 (see §6.2).
+- The derived key and the private key it protects are never sent to the server in plaintext or stored anywhere outside browser memory.
 - Users are warned: **if the master password is lost, vault data cannot be recovered** (by design — zero-knowledge).
 - A master password change triggers a full re-encryption of the user's vault.
 
@@ -65,17 +75,30 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 
 | Type              | Key Fields |
 |-------------------|------------|
-| Website Login     | URL, username, password, TOTP secret (optional) |
+| Website Login     | URL, username, password, TOTP secret (optional), recovery email (optional), recovery phone (optional) |
 | Database          | Host, port, database name, username, password, connection type |
 | API Key / Token   | Service name, key/token value, key ID, environment (prod/staging/dev) |
 | SSH Key Pair      | Name, private key, public key, passphrase, host |
-| Credit / Debit Card | Cardholder name, card number, expiry, CVV, billing address |
+| Payment Card (Credit/Debit) | Cardholder name, card number, card network, expiry, CVV, ATM PIN (optional), billing address |
 | Secure Note       | Title, free-form encrypted text body |
 | Wi-Fi             | SSID, password, security type |
 | Software License  | Product name, license key, license holder, seats, vendor |
 | Certificate       | Name, certificate file (PEM/PFX), private key, expiry date, issuer |
 | Environment Variables | Name, `.env` content block (multi-line key=value) |
+| Bank Account      | Bank name, account holder, account number, IFSC/SWIFT, branch, account type, customer ID (CIF) |
+| Mobile Banking / App PIN | App or bank name, mobile number, customer ID, login PIN, transaction/MPIN |
+| Network Device    | Device name, IP address(es) — multi-value, protocol (Web/Telnet/SSH/Other), port, username, password |
+| Email Account     | Email address, password, recovery email, recovery phone, IMAP/SMTP host (optional) |
+| Identity Document | Document type (Passport/Aadhaar/PAN/Driving License/Other), number, full name, issue date, expiry date |
+| Insurance Policy  | Provider, policy number, policy type, sum insured, premium due date, nominee |
+| Recovery Codes    | Service name, backup/recovery codes (multi-line) |
 | Other / Generic   | Name, username, password, notes — catch-all type |
+
+See `docs/credential-types.md` for the complete field-by-field reference (field names, input
+types, and which fields are optional) for every credential type.
+
+Every credential type also supports **Custom Fields** (§4.3) for anything not covered by its
+built-in schema, so the type list above is a floor, not a ceiling.
 
 ### 4.2 Common Fields (All Types)
 - **Name** (required) — display label
@@ -112,12 +135,38 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 - Multiple tags per credential; global tag list shown for quick filtering.
 - Color-coded tags for visual organization.
 
-### 5.3 Groups (Teams)
-- Admins and users can create **groups** (e.g., "DevOps", "Finance", "HR").
-- Groups have a group admin who manages membership.
-- Groups can own **shared collections** of credentials.
-- Members of a group automatically have access to the group's shared credentials.
-- Group membership is managed by the group admin or the application admin.
+### 5.3 Teams (formerly "Groups")
+- Admins and users can create **teams** of users (e.g., "DevOps", "Finance", "HR").
+  This is the same underlying `Group` entity/API from v1.0 — it is relabelled **"Teams"** in
+  the UI (nav item, page headings) starting in v1.1 purely to avoid being confused with the
+  new, unrelated **Credential Groups** concept in §5.4. No route, entity, or API name changed.
+- Teams have a team admin who manages membership.
+- Teams can own **shared collections** of credentials.
+- Members of a team automatically have access to the team's shared credentials.
+- Team membership is managed by the team admin or the application admin.
+
+### 5.4 Credential Groups
+
+A **Credential Group** bundles several *different* credential records that all belong to the
+same real-world entity, so they can be viewed, navigated, and (eventually) shared as one unit.
+This solves a common real case: a single bank relationship isn't one credential — it's several
+— but today they'd be scattered across the flat credential list with only a shared Folder or
+Tag loosely tying them together.
+
+**Example:** a "HDFC Bank" Credential Group could contain:
+- Two `Payment Card` credentials (debit cards)
+- One `Website Login` credential (netbanking)
+- One `Mobile Banking / App PIN` credential (login PIN + transaction PIN)
+
+**Model:**
+- A Credential Group has a **Name** and an **Icon**, and is owned by a user (personal) or a
+  Team (shared), mirroring how Folders are owned today.
+- A credential's **Credential Group** is independent of its **Folder** — both are optional and
+  can be set at the same time. Folder answers "where do I file this"; Credential Group answers
+  "which real-world account/entity does this belong to." A credential can belong to at most
+  one Credential Group at a time (not nested; flat membership).
+- Credential Groups are **not** a new sharing mechanism in v1.1 — sharing continues to happen
+  per-credential (§7) or per-Team (§5.3). Group-level sharing is a candidate for a future version.
 
 ---
 
@@ -131,10 +180,14 @@ The server stores only encrypted ciphertext. It never has access to:
 - Any plaintext credential data
 
 ### 6.2 Key Derivation
-- **Algorithm:** Argon2id
-- **Parameters (minimum):** memory=64MB, iterations=3, parallelism=4
-- **Input:** master password + user-specific random salt (stored server-side)
-- **Output:** 256-bit symmetric encryption key (held in memory only, cleared on logout)
+- **Algorithm:** PBKDF2-SHA256 (NIST SP 800-132 recommended parameters).
+  Argon2id was the original v1.0 target but was dropped because a compatible WASM build
+  wasn't available for the project's Vite 6 toolchain at implementation time; revisit when
+  browser-native Argon2id (or a maintained WASM build) becomes practical — the key-derivation
+  call is isolated in `crypto.ts` so swapping the algorithm later is a contained change.
+- **Parameters:** 600,000 iterations, SHA-256, 256-bit derived key.
+- **Input:** master password + user-specific random salt (stored server-side, `KeyDerivationSalt`).
+- **Output:** 256-bit symmetric encryption key (non-extractable `CryptoKey`, held in memory only, cleared on logout).
 
 ### 6.3 Credential Encryption
 - **Algorithm:** AES-256-GCM (authenticated encryption — provides both confidentiality and integrity)
@@ -144,8 +197,12 @@ The server stores only encrypted ciphertext. It never has access to:
 
 ### 6.4 Key Hierarchy for Sharing
 To enable sharing without exposing the master key:
-- Each user has an **asymmetric RSA-4096 or X25519 key pair** (private key encrypted with the derived symmetric key).
-- When a credential is shared, it is re-encrypted with a **shared credential key**, which is itself encrypted with each recipient's public key (envelope encryption).
+- Each user has an **asymmetric RSA-OAEP-2048 key pair** (2048 chosen over 4096 for browser
+  key-generation performance; private key encrypted with the derived symmetric key before storage).
+- Each credential already has its own random **AES-256 credential key**, wrapped (encrypted)
+  with the owner's RSA public key. Sharing re-wraps that same credential key with the
+  recipient's RSA public key (envelope encryption) — the underlying AES key and ciphertext
+  never change, only who can unwrap the key changes.
 
 ### 6.5 Transport Security
 - **TLS 1.2+ required** in production; TLS 1.3 preferred.
@@ -387,6 +444,7 @@ The home page shows:
 - `Users` — id, username, email, password_hash, salt, public_key, encrypted_private_key, created_at, is_active, role
 - `Credentials` — id, owner_user_id, type, name_encrypted, data_encrypted, iv, auth_tag, folder_id, expiry_date, created_at, updated_at
 - `Folders` — id, user_id/group_id, name, parent_folder_id
+- `CredentialGroups` — id, name, icon, owner_user_id, team_group_id, created_at, updated_at (see §5.4)
 - `Tags` — id, name, color, user_id
 - `CredentialTags` — credential_id, tag_id
 - `CredentialAttachments` — id, credential_id, filename_encrypted, data_encrypted, iv, size, mime_type_encrypted

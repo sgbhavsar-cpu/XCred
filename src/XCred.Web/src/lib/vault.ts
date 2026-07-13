@@ -29,7 +29,7 @@ export async function decryptCredentialData(
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'textarea' | 'select' | 'url';
+  type: 'text' | 'password' | 'textarea' | 'select' | 'url' | 'list';
   placeholder?: string;
   optional?: boolean;
   options?: string[];
@@ -42,6 +42,8 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'username', label: 'Username / Email', type: 'text', placeholder: 'you@example.com' },
     { key: 'password', label: 'Password', type: 'password' },
     { key: 'totp', label: 'TOTP Secret', type: 'text', placeholder: 'Optional', optional: true },
+    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true },
+    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true },
   ],
   Database: [
     { key: 'host', label: 'Host', type: 'text', placeholder: 'db.example.com' },
@@ -67,9 +69,11 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   CreditCard: [
     { key: 'cardholderName', label: 'Cardholder Name', type: 'text' },
     { key: 'cardNumber', label: 'Card Number', type: 'text', placeholder: '•••• •••• •••• ••••' },
+    { key: 'cardNetwork', label: 'Card Network', type: 'select', optional: true, options: ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Other'] },
     { key: 'expiryMonth', label: 'Expiry Month', type: 'text', placeholder: 'MM' },
     { key: 'expiryYear', label: 'Expiry Year', type: 'text', placeholder: 'YYYY' },
     { key: 'cvv', label: 'CVV', type: 'password' },
+    { key: 'atmPin', label: 'ATM PIN', type: 'password', optional: true },
     { key: 'billingAddress', label: 'Billing Address', type: 'textarea', optional: true, rows: 2 },
   ],
   SecureNote: [
@@ -95,6 +99,56 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   ],
   EnvironmentVariables: [
     { key: 'content', label: 'Environment Variables (.env format)', type: 'textarea', rows: 10, placeholder: 'DATABASE_URL=postgresql://...\nAPI_KEY=sk-...' },
+  ],
+  BankAccount: [
+    { key: 'bankName', label: 'Bank Name', type: 'text' },
+    { key: 'accountHolderName', label: 'Account Holder Name', type: 'text' },
+    { key: 'accountNumber', label: 'Account Number', type: 'password' },
+    { key: 'ifscSwiftCode', label: 'IFSC / SWIFT Code', type: 'text' },
+    { key: 'branch', label: 'Branch', type: 'text', optional: true },
+    { key: 'accountType', label: 'Account Type', type: 'select', options: ['Savings', 'Current', 'Salary', 'Fixed Deposit', 'Loan', 'Other'] },
+    { key: 'customerId', label: 'Customer ID (CIF)', type: 'text', optional: true },
+  ],
+  MobileBankingPin: [
+    { key: 'bankOrAppName', label: 'Bank / App Name', type: 'text' },
+    { key: 'mobileNumber', label: 'Mobile Number', type: 'text' },
+    { key: 'customerId', label: 'Customer ID', type: 'text', optional: true },
+    { key: 'loginPin', label: 'Login PIN', type: 'password' },
+    { key: 'transactionPin', label: 'Transaction PIN (MPIN)', type: 'password' },
+  ],
+  NetworkDevice: [
+    { key: 'deviceName', label: 'Device Name', type: 'text' },
+    { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.1' },
+    { key: 'protocol', label: 'Protocol', type: 'select', options: ['Web', 'Telnet', 'SSH', 'Other'] },
+    { key: 'port', label: 'Port', type: 'text', optional: true },
+    { key: 'username', label: 'Username', type: 'text' },
+    { key: 'password', label: 'Password', type: 'password' },
+  ],
+  EmailAccount: [
+    { key: 'emailAddress', label: 'Email Address', type: 'text', placeholder: 'you@example.com' },
+    { key: 'password', label: 'Password', type: 'password' },
+    { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true },
+    { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true },
+    { key: 'imapSmtpHost', label: 'IMAP / SMTP Host', type: 'text', optional: true },
+  ],
+  IdentityDocument: [
+    { key: 'documentType', label: 'Document Type', type: 'select', options: ['Passport', 'Aadhaar', 'PAN', 'Driving License', 'Other'] },
+    { key: 'documentNumber', label: 'Document Number', type: 'password' },
+    { key: 'fullName', label: 'Full Name', type: 'text' },
+    { key: 'issueDate', label: 'Issue Date', type: 'text', optional: true, placeholder: 'YYYY-MM-DD' },
+    { key: 'expiryDate', label: 'Expiry Date', type: 'text', optional: true, placeholder: 'YYYY-MM-DD' },
+  ],
+  InsurancePolicy: [
+    { key: 'provider', label: 'Provider', type: 'text' },
+    { key: 'policyNumber', label: 'Policy Number', type: 'password' },
+    { key: 'policyType', label: 'Policy Type', type: 'select', options: ['Life', 'Health', 'Motor', 'Home', 'Travel', 'Other'] },
+    { key: 'sumInsured', label: 'Sum Insured', type: 'text', optional: true },
+    { key: 'premiumDueDate', label: 'Premium Due Date', type: 'text', optional: true, placeholder: 'YYYY-MM-DD' },
+    { key: 'nominee', label: 'Nominee', type: 'text', optional: true },
+  ],
+  RecoveryCodes: [
+    { key: 'serviceName', label: 'Service Name', type: 'text' },
+    { key: 'codes', label: 'Backup / Recovery Codes', type: 'textarea', rows: 8, placeholder: 'One code per line' },
   ],
   Generic: [
     { key: 'username', label: 'Username', type: 'text', optional: true },

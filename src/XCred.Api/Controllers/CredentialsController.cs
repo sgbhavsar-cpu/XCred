@@ -27,6 +27,8 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
             .Include(c => c.Folder)
+            .Include(c => c.CredentialGroup)
+            .Include(c => c.Shares)
             .OrderByDescending(c => c.UpdatedAt)
             .ToListAsync();
 
@@ -43,6 +45,8 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
             .Include(c => c.Folder)
+            .Include(c => c.CredentialGroup)
+            .Include(c => c.Shares)
             .FirstOrDefaultAsync(c => c.Id == id && c.OwnerId == userId);
 
         if (cred == null) return NotFound(ApiResponse<CredentialDto>.Fail("NOT_FOUND", "Credential not found."));
@@ -59,12 +63,11 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         if (!CredentialTypes.All.Contains(req.Type))
             return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_TYPE", "Unknown credential type."));
 
-        if (req.FolderId.HasValue)
-        {
-            var folder = await db.Folders.FirstOrDefaultAsync(f => f.Id == req.FolderId && f.OwnerId == userId);
-            if (folder == null)
-                return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_FOLDER", "Folder not found or not accessible."));
-        }
+        if (!await IsFolderAccessibleAsync(req.FolderId, userId))
+            return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_FOLDER", "Folder not found or not accessible."));
+
+        if (!await IsCredentialGroupAccessibleAsync(req.CredentialGroupId, userId))
+            return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_CREDENTIAL_GROUP", "Credential group not found or not accessible."));
 
         var cred = new Credential
         {
@@ -75,6 +78,7 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             EncryptedCredentialKey = req.EncryptedCredentialKey,
             ExpiryDate = req.ExpiryDate,
             FolderId = req.FolderId,
+            CredentialGroupId = req.CredentialGroupId,
             CreatedById = userId,
             UpdatedById = userId
         };
@@ -97,6 +101,8 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
             .Include(c => c.Folder)
+            .Include(c => c.CredentialGroup)
+            .Include(c => c.Shares)
             .FirstAsync(c => c.Id == cred.Id);
 
         return CreatedAtAction(nameof(GetById), new { id = cred.Id }, ApiResponse<CredentialDto>.Ok(MapToDto(created)));
@@ -112,11 +118,18 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
 
         if (cred == null) return NotFound(ApiResponse<CredentialDto>.Fail("NOT_FOUND", "Credential not found."));
 
+        if (!await IsFolderAccessibleAsync(req.FolderId, userId))
+            return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_FOLDER", "Folder not found or not accessible."));
+
+        if (!await IsCredentialGroupAccessibleAsync(req.CredentialGroupId, userId))
+            return BadRequest(ApiResponse<CredentialDto>.Fail("INVALID_CREDENTIAL_GROUP", "Credential group not found or not accessible."));
+
         cred.EncryptedData = req.EncryptedData;
         cred.DataIv = req.DataIv;
         cred.EncryptedCredentialKey = req.EncryptedCredentialKey;
         cred.ExpiryDate = req.ExpiryDate;
         cred.FolderId = req.FolderId;
+        cred.CredentialGroupId = req.CredentialGroupId;
         cred.UpdatedAt = DateTime.UtcNow;
         cred.UpdatedById = userId;
 
@@ -149,6 +162,8 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
             .Include(c => c.Folder)
+            .Include(c => c.CredentialGroup)
+            .Include(c => c.Shares)
             .FirstAsync(c => c.Id == id);
 
         return Ok(ApiResponse<CredentialDto>.Ok(MapToDto(updated)));
@@ -191,8 +206,11 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         ExpiryDate = c.ExpiryDate,
         FolderId = c.FolderId,
         FolderName = c.Folder?.Name,
+        CredentialGroupId = c.CredentialGroupId,
+        CredentialGroupName = c.CredentialGroup?.Name,
         OwnerId = c.OwnerId,
         OwnerUsername = c.Owner?.Username ?? string.Empty,
+        IsShared = c.Shares.Any(s => !s.IsRevoked),
         CreatedAt = c.CreatedAt,
         UpdatedAt = c.UpdatedAt,
         Tags = c.CredentialTags.Select(ct => new TagDto
@@ -212,6 +230,18 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             UploadedAt = a.UploadedAt
         }).ToList()
     };
+
+    private async Task<bool> IsFolderAccessibleAsync(Guid? folderId, Guid userId) =>
+        !folderId.HasValue || await db.Folders.AnyAsync(f => f.Id == folderId && f.OwnerId == userId);
+
+    private async Task<bool> IsCredentialGroupAccessibleAsync(Guid? credentialGroupId, Guid userId)
+    {
+        if (!credentialGroupId.HasValue) return true;
+        var group = await db.CredentialGroups.FirstOrDefaultAsync(cg => cg.Id == credentialGroupId);
+        if (group == null) return false;
+        if (group.OwnerId == userId) return true;
+        return group.GroupId != null && await db.GroupMembers.AnyAsync(gm => gm.GroupId == group.GroupId && gm.UserId == userId);
+    }
 
     private Guid GetUserId() =>
         Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value

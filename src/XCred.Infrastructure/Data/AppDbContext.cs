@@ -10,6 +10,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Credential> Credentials => Set<Credential>();
     public DbSet<CredentialAttachment> CredentialAttachments => Set<CredentialAttachment>();
     public DbSet<Folder> Folders => Set<Folder>();
+    public DbSet<CredentialGroup> CredentialGroups => Set<CredentialGroup>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CredentialTag> CredentialTags => Set<CredentialTag>();
     public DbSet<Group> Groups => Set<Group>();

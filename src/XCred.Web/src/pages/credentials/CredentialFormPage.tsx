@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown } from 'lucide-react';
+import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { encryptCredentialData, decryptCredentialData, CREDENTIAL_FIELDS, CREDENTIAL_TYPES } from '@/lib/vault';
 import type { FieldDef } from '@/lib/vault';
-import { credentialTypeLabel, credentialTypeIcon } from '@/lib/utils';
+import { credentialTypeLabel, credentialTypeIcon, isValidUrl } from '@/lib/utils';
 import { passwordStrength } from '@/lib/crypto';
 import PasswordGeneratorModal from './components/PasswordGeneratorModal';
 import { cn } from '@/lib/utils';
 
 interface Tag { id: string; name: string; color: string }
 interface Folder { id: string; name: string; parentFolderId: string | null }
+interface CredentialGroup { id: string; name: string; icon: string }
 interface CustomField { label: string; value: string; fieldType: 'text' | 'password' | 'url' }
 
 export default function CredentialFormPage() {
@@ -28,6 +29,7 @@ export default function CredentialFormPage() {
   const [notes, setNotes] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [folderId, setFolderId] = useState('');
+  const [credentialGroupId, setCredentialGroupId] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [showGenerator, setShowGenerator] = useState(false);
@@ -35,17 +37,20 @@ export default function CredentialFormPage() {
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [allFolders, setAllFolders] = useState<Folder[]>([]);
+  const [allCredentialGroups, setAllCredentialGroups] = useState<CredentialGroup[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(isEdit);
 
   useEffect(() => {
     const loadMeta = async () => {
-      const [tagsRes, foldersRes] = await Promise.all([
+      const [tagsRes, foldersRes, groupsRes] = await Promise.all([
         api.get('/tags').catch(() => ({ data: { data: [] } })),
         api.get('/folders').catch(() => ({ data: { data: [] } })),
+        api.get('/credential-groups').catch(() => ({ data: { data: [] } })),
       ]);
       setAllTags(tagsRes.data.data);
       setAllFolders(flattenFolders(foldersRes.data.data));
+      setAllCredentialGroups(groupsRes.data.data);
     };
     loadMeta();
   }, []);
@@ -59,6 +64,7 @@ export default function CredentialFormPage() {
         setType(cred.type);
         setExpiryDate(cred.expiryDate ? cred.expiryDate.split('T')[0] : '');
         setFolderId(cred.folderId ?? '');
+        setCredentialGroupId(cred.credentialGroupId ?? '');
         setSelectedTagIds(cred.tags.map((t: Tag) => t.id));
 
         const decrypted = await decryptCredentialData(cred.encryptedData, cred.dataIv, cred.encryptedCredentialKey, privateKey);
@@ -67,7 +73,7 @@ export default function CredentialFormPage() {
         setCustomFields(decrypted.customFields ? JSON.parse(decrypted.customFields as string) : []);
         const typeFields = CREDENTIAL_FIELDS[cred.type] ?? [];
         const fieldData: Record<string, string> = {};
-        typeFields.forEach(f => { fieldData[f.key] = (decrypted[f.key] as string) ?? ''; });
+        typeFields.forEach(f => { fieldData[f.key] = (decrypted[f.key] as string) ?? (f.type === 'list' ? '[]' : ''); });
         setFields(fieldData);
       } catch {
         toast.error('Failed to load credential for editing.');
@@ -81,7 +87,10 @@ export default function CredentialFormPage() {
 
   // Reset fields when type changes (only on create)
   useEffect(() => {
-    if (!isEdit) setFields({});
+    if (isEdit) return;
+    const defaults: Record<string, string> = {};
+    (CREDENTIAL_FIELDS[type] ?? []).forEach(f => { if (f.type === 'list') defaults[f.key] = '[]'; });
+    setFields(defaults);
   }, [type, isEdit]);
 
   const setField = (key: string, value: string) => setFields(prev => ({ ...prev, [key]: value }));
@@ -94,6 +103,9 @@ export default function CredentialFormPage() {
     e.preventDefault();
     if (!name.trim()) { toast.error('Name is required.'); return; }
     if (!publicKey) { toast.error('Public key not found. Please log out and log back in.'); return; }
+
+    const invalidUrlField = typeFields.find(f => f.type === 'url' && fields[f.key]?.trim() && !isValidUrl(fields[f.key]));
+    if (invalidUrlField) { toast.error(`"${invalidUrlField.label}" is not a valid URL.`); return; }
 
     setSaving(true);
     try {
@@ -113,6 +125,7 @@ export default function CredentialFormPage() {
         encryptedCredentialKey,
         expiryDate: expiryDate || null,
         folderId: folderId || null,
+        credentialGroupId: credentialGroupId || null,
         tagIds: selectedTagIds,
       };
 
@@ -153,7 +166,7 @@ export default function CredentialFormPage() {
             <label className="block text-sm font-medium text-slate-700 mb-2">Credential Type</label>
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {CREDENTIAL_TYPES.map(t => (
-                <button key={t} type="button" onClick={() => setType(t)}
+                <button key={t} type="button" onClick={() => setType(t)} data-type={t}
                   className={cn(
                     'flex flex-col items-center gap-1 p-2.5 rounded-xl border text-xs font-medium transition-all',
                     type === t
@@ -170,9 +183,9 @@ export default function CredentialFormPage() {
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
           {/* Name */}
-          <div>
+          <div data-field="name">
             <label className="block text-sm font-medium text-slate-700 mb-1">Name <span className="text-red-500">*</span></label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder={`e.g. Company ${credentialTypeLabel(type)}`}
+            <input name="name" value={name} onChange={e => setName(e.target.value)} placeholder={`e.g. Company ${credentialTypeLabel(type)}`}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
@@ -261,16 +274,34 @@ export default function CredentialFormPage() {
           </div>
 
           {/* Folder */}
-          <div>
+          <div data-field="folderId">
             <label className="block text-sm font-medium text-slate-700 mb-1">Folder</label>
             <div className="relative">
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <select value={folderId} onChange={e => setFolderId(e.target.value)}
+              <select name="folderId" value={folderId} onChange={e => setFolderId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
                 <option value="">No Folder</option>
                 {allFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
+          </div>
+
+          {/* Credential Group */}
+          <div data-field="credentialGroupId">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Credential Group <span className="text-slate-400 font-normal text-xs">(optional — e.g. group by bank, service)</span>
+            </label>
+            <div className="relative">
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <select name="credentialGroupId" value={credentialGroupId} onChange={e => setCredentialGroupId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
+                <option value="">No Credential Group</option>
+                {allCredentialGroups.map(g => <option key={g.id} value={g.id}>{g.icon} {g.name}</option>)}
+              </select>
+            </div>
+            {allCredentialGroups.length === 0 && (
+              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <a href="/credential-groups" className="text-indigo-600 hover:underline">Create one</a> to bundle related credentials (e.g. a bank's cards and logins).</p>
+            )}
           </div>
 
           {/* Expiry */}
@@ -312,7 +343,7 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
   const strength = field.type === 'password' && value ? passwordStrength(value) : null;
 
   return (
-    <div>
+    <div data-field={field.key}>
       <label className="block text-sm font-medium text-slate-700 mb-1">
         {field.label}
         {field.optional && <span className="text-slate-400 font-normal text-xs ml-1">(optional)</span>}
@@ -321,23 +352,25 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
       {field.type === 'select' ? (
         <div className="relative">
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <select value={value} onChange={e => onChange(e.target.value)}
+          <select name={field.key} value={value} onChange={e => onChange(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
             <option value="">Select…</option>
             {field.options?.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
       ) : field.type === 'textarea' ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={field.rows ?? 4}
+        <textarea name={field.key} value={value} onChange={e => onChange(e.target.value)} rows={field.rows ?? 4}
           placeholder={field.placeholder}
           className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-mono" />
+      ) : field.type === 'list' ? (
+        <ListField value={value} onChange={onChange} placeholder={field.placeholder} />
       ) : (
         <div className="relative">
-          <input value={value} onChange={e => onChange(e.target.value)}
-            type={field.type === 'password' ? (hidden ? 'password' : 'text') : field.type}
+          <input name={field.key} value={value} onChange={e => onChange(e.target.value)}
+            type={field.type === 'password' ? (hidden ? 'password' : 'text') : field.type === 'url' ? 'text' : field.type}
             placeholder={field.placeholder}
             className={cn('w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500',
-              field.type === 'password' ? 'pr-20 font-mono' : '')} />
+              field.type === 'password' ? 'pr-20 font-mono' : field.type === 'url' ? 'pr-9' : '')} />
           {field.type === 'password' && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <button type="button" onClick={onToggleHidden} className="p-1 text-slate-400 hover:text-slate-600">
@@ -348,7 +381,19 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
               </button>
             </div>
           )}
+          {field.type === 'url' && value.trim() && (
+            <button type="button"
+              onClick={() => { if (isValidUrl(value)) window.open(value, '_blank', 'noopener,noreferrer'); }}
+              disabled={!isValidUrl(value)}
+              title={isValidUrl(value) ? 'Open in new tab' : 'Enter a valid http(s) URL'}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:text-slate-400">
+              <ExternalLink className="w-4 h-4" />
+            </button>
+          )}
         </div>
+      )}
+      {field.type === 'url' && value.trim() && !isValidUrl(value) && (
+        <p className="text-xs text-red-500 mt-1">Enter a valid URL starting with http:// or https://</p>
       )}
 
       {strength && (
@@ -359,6 +404,33 @@ function FormField({ field, value, onChange, hidden, onToggleHidden, onGenerateP
           <span className="text-xs text-slate-500">{strength.label}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function ListField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  let items: string[] = [];
+  try { items = JSON.parse(value || '[]'); } catch { items = []; }
+
+  const update = (next: string[]) => onChange(JSON.stringify(next));
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <div key={i} className="flex gap-2">
+          <input value={item} placeholder={placeholder}
+            onChange={e => update(items.map((v, j) => j === i ? e.target.value : v))}
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <button type="button" onClick={() => update(items.filter((_, j) => j !== i))}
+            className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={() => update([...items, ''])}
+        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+        <Plus className="w-3.5 h-3.5" /> Add {items.length > 0 ? 'another' : 'value'}
+      </button>
     </div>
   );
 }

@@ -46,7 +46,11 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+// Disabled only for the plain-HTTP Docker test harness (docker-compose.yml), which has no
+// HTTPS endpoint to redirect to. Production (IIS) deployments keep this enabled by default.
+if (!builder.Configuration.GetValue<bool>("DisableHttpsRedirection"))
+    app.UseHttpsRedirection();
+
 app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();

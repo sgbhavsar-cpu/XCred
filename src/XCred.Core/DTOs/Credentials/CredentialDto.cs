@@ -10,6 +10,8 @@ public class CredentialDto
     public DateTime? ExpiryDate { get; set; }
     public Guid? FolderId { get; set; }
     public string? FolderName { get; set; }
+    public Guid? CredentialGroupId { get; set; }
+    public string? CredentialGroupName { get; set; }
     public Guid OwnerId { get; set; }
     public string OwnerUsername { get; set; } = string.Empty;
     public bool IsShared { get; set; }

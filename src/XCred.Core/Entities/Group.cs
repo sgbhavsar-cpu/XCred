@@ -10,5 +10,6 @@ public class Group
 
     public ICollection<GroupMember> Members { get; set; } = [];
     public ICollection<Folder> Folders { get; set; } = [];
+    public ICollection<CredentialGroup> CredentialGroups { get; set; } = [];
     public ICollection<SharedCredential> SharedCredentials { get; set; } = [];
 }

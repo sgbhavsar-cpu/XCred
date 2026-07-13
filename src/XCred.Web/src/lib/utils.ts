@@ -18,18 +18,35 @@ export function daysUntil(date: string | Date): number {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+export function isValidUrl(value: string): boolean {
+  if (!value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function credentialTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     WebsiteLogin: 'Website Login',
     Database: 'Database',
     ApiKey: 'API Key',
     SshKey: 'SSH Key',
-    CreditCard: 'Credit / Debit Card',
+    CreditCard: 'Payment Card',
     SecureNote: 'Secure Note',
     WiFi: 'Wi-Fi',
     SoftwareLicense: 'Software License',
     Certificate: 'Certificate',
     EnvironmentVariables: 'Environment Variables',
+    BankAccount: 'Bank Account',
+    MobileBankingPin: 'Mobile Banking PIN',
+    NetworkDevice: 'Network Device',
+    EmailAccount: 'Email Account',
+    IdentityDocument: 'Identity Document',
+    InsurancePolicy: 'Insurance Policy',
+    RecoveryCodes: 'Recovery Codes',
     Generic: 'Generic',
   };
   return labels[type] ?? type;
@@ -47,6 +64,13 @@ export function credentialTypeIcon(type: string): string {
     SoftwareLicense: '📦',
     Certificate: '📜',
     EnvironmentVariables: '⚙️',
+    BankAccount: '🏦',
+    MobileBankingPin: '📱',
+    NetworkDevice: '🌐',
+    EmailAccount: '📧',
+    IdentityDocument: '🪪',
+    InsurancePolicy: '🛡️',
+    RecoveryCodes: '🔢',
     Generic: '🔒',
   };
   return icons[type] ?? '🔒';
