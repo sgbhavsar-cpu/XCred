@@ -5,7 +5,7 @@
 ; ╚══════════════════════════════════════════════════════════════╝
 
 #define AppName      "XCred"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.1.0"
 #define AppPublisher "Your Company"
 #define AppExe       "XCred.Api.dll"
 #define PublishDir   "..\publish"
@@ -16,9 +16,9 @@ AppId={{8F3A1D2C-7B4E-4F9A-B3C6-1E2D4A5F6B7C}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-AppPublisherURL=https://github.com/yourusername/XCred
-AppSupportURL=https://github.com/yourusername/XCred/issues
-AppUpdatesURL=https://github.com/yourusername/XCred/releases
+AppPublisherURL=https://github.com/sgbhavsar-cpu/XCred
+AppSupportURL=https://github.com/sgbhavsar-cpu/XCred/issues
+AppUpdatesURL=https://github.com/sgbhavsar-cpu/XCred/releases
 DefaultDirName={commonpf64}\XCred
 DefaultGroupName={#AppName}
 AllowNoIcons=yes
