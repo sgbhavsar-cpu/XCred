@@ -14,10 +14,10 @@ import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
 
-/// MOB-CRED-02/03 — credential detail: every populated field per its [FieldDef] type,
-/// reveal/hide for passwords, copy with the real clipboard-clear countdown, smart links,
-/// and (as of Sprint 1.4) an Edit action. Delete/Share/Attachments are later sprints
-/// (1.6/2.x).
+/// MOB-CRED-02/03/MOB-ATT-01/02 — credential detail: every populated field per its
+/// [FieldDef] type, reveal/hide for passwords, copy with the real clipboard-clear
+/// countdown, smart links, Edit action, and (as of Sprint 1.6) attachment
+/// upload/download/delete. Delete/Share are later sprints (2.x).
 class CredentialDetailScreen extends ConsumerStatefulWidget {
   const CredentialDetailScreen({required this.credentialId, super.key});
   final String credentialId;
@@ -33,7 +33,9 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
   String _notes = '';
   List<_CustomField> _customFields = [];
   final Map<String, bool> _hidden = {};
+  final Map<String, String> _attachmentNames = {};
   bool _loading = true;
+  bool _uploading = false;
   String? _error;
 
   @override
@@ -83,6 +85,21 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
         customFields = [];
       }
 
+      final attachmentNames = <String, String>{};
+      if (cred.attachments.isNotEmpty) {
+        final credentialKey =
+            crypto.decryptKeyWithPrivateKey(session.privateKey, cred.encryptedCredentialKey);
+        for (final att in cred.attachments) {
+          if (att.fileNameIv == null) continue;
+          try {
+            attachmentNames[att.id] =
+                await crypto.decrypt(credentialKey, att.encryptedFileName, att.fileNameIv!);
+          } catch (_) {
+            attachmentNames[att.id] = 'Encrypted file';
+          }
+        }
+      }
+
       setState(() {
         _cred = cred;
         _fields = fd;
@@ -92,11 +109,132 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
         _hidden
           ..clear()
           ..addAll(hidden);
+        _attachmentNames
+          ..clear()
+          ..addAll(attachmentNames);
       });
     } catch (e) {
       setState(() => _error = 'Failed to decrypt credential.');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _uploadAttachment() async {
+    final cred = _cred;
+    final session = ref.read(authSessionProvider);
+    if (cred == null || session == null) return;
+
+    final picked = await ref.read(fileExchangeProvider).pickFile();
+    if (picked == null) return;
+
+    final maxMb = ref.read(orgSettingsProvider).maxAttachmentSizeMb;
+    if (picked.bytes.lengthInBytes > maxMb * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"${picked.name}" is too large. Maximum size is $maxMb MB.'),
+        ));
+      }
+      return;
+    }
+
+    setState(() => _uploading = true);
+    try {
+      final crypto = ref.read(cryptoServiceProvider);
+      final credentialKey =
+          crypto.decryptKeyWithPrivateKey(session.privateKey, cred.encryptedCredentialKey);
+
+      final fileBase64 = base64Encode(picked.bytes);
+      final encData = await crypto.encrypt(credentialKey, fileBase64);
+      final encName = await crypto.encrypt(credentialKey, picked.name);
+      final encMime = await crypto.encrypt(credentialKey, picked.mimeType);
+
+      await ref.read(attachmentRepositoryProvider).upload(
+            cred.id,
+            encryptedFileName: encName.ciphertextB64,
+            fileNameIv: encName.ivB64,
+            encryptedMimeType: encMime.ciphertextB64,
+            mimeTypeIv: encMime.ivB64,
+            encryptedData: encData.ciphertextB64,
+            dataIv: encData.ivB64,
+            fileSizeBytes: picked.bytes.lengthInBytes,
+          );
+
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to upload attachment.')));
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _downloadAttachment(AttachmentMeta att) async {
+    final cred = _cred;
+    final session = ref.read(authSessionProvider);
+    if (cred == null || session == null) return;
+    try {
+      final data = await ref.read(attachmentRepositoryProvider).download(cred.id, att.id);
+      final crypto = ref.read(cryptoServiceProvider);
+      final credentialKey =
+          crypto.decryptKeyWithPrivateKey(session.privateKey, cred.encryptedCredentialKey);
+
+      final fileBase64 =
+          await crypto.decrypt(credentialKey, data['encryptedData'] as String, data['dataIv'] as String);
+      final fileName = data['fileNameIv'] != null
+          ? await crypto
+              .decrypt(credentialKey, data['encryptedFileName'] as String, data['fileNameIv'] as String)
+              .catchError((_) => 'attachment')
+          : 'attachment';
+      final mimeType = data['mimeTypeIv'] != null
+          ? await crypto
+              .decrypt(
+                  credentialKey, data['encryptedMimeType'] as String, data['mimeTypeIv'] as String)
+              .catchError((_) => 'application/octet-stream')
+          : 'application/octet-stream';
+
+      await ref
+          .read(fileExchangeProvider)
+          .saveOrShare(fileName, base64Decode(fileBase64), mimeType);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to download attachment.')));
+      }
+    }
+  }
+
+  Future<void> _deleteAttachment(AttachmentMeta att) async {
+    final cred = _cred;
+    if (cred == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Attachment?'),
+        content: Text(_attachmentNames[att.id] ?? 'This attachment'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(attachmentRepositoryProvider).delete(cred.id, att.id);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to delete attachment.')));
+      }
     }
   }
 
@@ -268,7 +406,59 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildAttachmentsSection(cred),
       ],
+    );
+  }
+
+  Widget _buildAttachmentsSection(CredentialListItem cred) {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.attach_file),
+            title: Text('Attachments${cred.attachments.isNotEmpty ? ' (${cred.attachments.length})' : ''}'),
+            trailing: TextButton.icon(
+              onPressed: _uploading ? null : _uploadAttachment,
+              icon: _uploading
+                  ? const SizedBox(
+                      height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.upload_outlined, size: 18),
+              label: Text(_uploading ? 'Encrypting…' : 'Add File'),
+            ),
+          ),
+          if (cred.attachments.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text('No attachments yet. Files are encrypted before upload.',
+                  style: TextStyle(fontSize: 12)),
+            )
+          else
+            for (final att in cred.attachments)
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file_outlined),
+                title: Text(_attachmentNames[att.id] ?? '…'),
+                subtitle: Text('${(att.fileSizeBytes / 1024).toStringAsFixed(1)} KB · '
+                    '${_formatDate(att.uploadedAt)}'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.download_outlined, size: 20),
+                      tooltip: 'Download',
+                      onPressed: () => _downloadAttachment(att),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      tooltip: 'Delete',
+                      onPressed: () => _deleteAttachment(att),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
     );
   }
 

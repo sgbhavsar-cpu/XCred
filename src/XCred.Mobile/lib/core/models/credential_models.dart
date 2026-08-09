@@ -15,6 +15,40 @@ class TagRef {
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'color': color};
 }
 
+/// Metadata only — the encrypted *content* is fetched on demand
+/// (high-level-design.md §2: attachments are deliberately not pre-synced into the
+/// offline cache; large, and "know it exists, fetch bytes when opened" is a better
+/// tradeoff than bloating local storage with every attachment's ciphertext).
+class AttachmentMeta {
+  final String id;
+  final String encryptedFileName;
+  final String? fileNameIv;
+  final String encryptedMimeType;
+  final String? mimeTypeIv;
+  final int fileSizeBytes;
+  final DateTime uploadedAt;
+
+  const AttachmentMeta({
+    required this.id,
+    required this.encryptedFileName,
+    this.fileNameIv,
+    required this.encryptedMimeType,
+    this.mimeTypeIv,
+    required this.fileSizeBytes,
+    required this.uploadedAt,
+  });
+
+  factory AttachmentMeta.fromJson(Map<String, dynamic> json) => AttachmentMeta(
+        id: json['id'] as String,
+        encryptedFileName: json['encryptedFileName'] as String,
+        fileNameIv: json['fileNameIv'] as String?,
+        encryptedMimeType: json['encryptedMimeType'] as String,
+        mimeTypeIv: json['mimeTypeIv'] as String?,
+        fileSizeBytes: json['fileSizeBytes'] as int,
+        uploadedAt: DateTime.parse(json['uploadedAt'] as String),
+      );
+}
+
 class CredentialListItem {
   final String id;
   final String type;
@@ -32,6 +66,7 @@ class CredentialListItem {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<TagRef> tags;
+  final List<AttachmentMeta> attachments;
 
   const CredentialListItem({
     required this.id,
@@ -50,6 +85,7 @@ class CredentialListItem {
     required this.createdAt,
     required this.updatedAt,
     required this.tags,
+    this.attachments = const [],
   });
 
   bool get isExpired => expiryDate != null && expiryDate!.isBefore(DateTime.now());
@@ -73,6 +109,9 @@ class CredentialListItem {
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         tags: ((json['tags'] as List<dynamic>?) ?? [])
             .map((t) => TagRef.fromJson(t as Map<String, dynamic>))
+            .toList(),
+        attachments: ((json['attachments'] as List<dynamic>?) ?? [])
+            .map((a) => AttachmentMeta.fromJson(a as Map<String, dynamic>))
             .toList(),
       );
 

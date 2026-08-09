@@ -351,6 +351,40 @@ with anything below a multi-line field.
 
 ### Sprint 1.6 — Attachments
 
+**Status: Done (2026-08-09).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/attachments_test.dart`: upload a
+file, confirm its decrypted original filename appears in the list, download it and
+confirm the filename/MIME type/bytes all round-tripped exactly (MOB-ATT-02's core
+concern — the same class of bug fixed in the web app earlier this project, not
+reintroduced here), attempt an oversized upload against a real non-default
+`orgSettings.maxAttachmentSizeMb` (set to 1 MB for this test, restored to 10 afterward)
+and confirm client-side rejection shows the real configured figure, then delete the
+attachment (with its confirmation dialog) and confirm it's gone.
+
+Real OS file-picker/share-sheet dialogs render outside the Flutter app's own widget
+tree, so `WidgetTester` can't drive them — used the same provider-override seam already
+established for `BiometricGate`/`ApiClient` in earlier sprints: `FileExchange` (new
+platform abstraction, architecture.md §5/§6) is swapped for a fake that returns known
+bytes on "pick" and records what it's given on "save/share". Everything else
+(encryption, the real backend, decryption) is genuine.
+
+One real dependency-resolution problem hit and fixed: `file_picker` (Android-relevant
+versions up to 11.0.3) and `share_plus`/`flutter_secure_storage` disagreed on the
+`win32` package's version — a Windows-desktop-only transitive dependency that never
+touches the Android build. Forcing a `dependency_overrides` pin initially "fixed" pub's
+resolver but left `file_picker`'s actual Windows source code broken at compile time
+(written against an older `win32` API) — which matters even for an Android-only app,
+because `flutter test` on this Windows host still compiles every platform variant.
+Fixed properly by using `file_picker: ^12.0.0-beta.7`, which genuinely depends on a
+`win32` version compatible with the others (no override needed).
+
+Two real test-authoring bugs fixed (not app bugs, same recurring class from earlier
+sprints): a Save-button tap missed because the keyboard was still open when
+`ensureVisible` computed its scroll target (fixed by dismissing the keyboard first,
+matching Sprint 1.5's fix); and the delete-attachment assertion ran before dismissing
+its own confirmation dialog (a dialog I'd added and then forgotten about when writing
+the test), which trivially caused the filename to appear twice in the tree.
+
 **MOB-ATT-01: Upload** (FR-ATT-01)
 - As a user, I attach a file to a credential, encrypted client-side.
 - Acceptance criteria: filename/mime/data each independently AES-GCM-encrypted (fresh IV

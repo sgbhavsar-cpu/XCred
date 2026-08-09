@@ -8,6 +8,7 @@ import '../auth/auth_session.dart';
 import '../crypto/crypto_service.dart';
 import '../db/app_database.dart';
 import '../platform/biometric_gate.dart';
+import '../platform/file_exchange.dart';
 import '../platform/secure_vault_storage.dart';
 import '../session/org_settings.dart';
 import '../session/session_persistence.dart';
@@ -97,6 +98,8 @@ final secureVaultStorageProvider = Provider<SecureVaultStorage>((ref) {
 });
 
 final biometricGateProvider = Provider<BiometricGate>((ref) => LocalAuthBiometricGate());
+
+final fileExchangeProvider = Provider<FileExchange>((ref) => DefaultFileExchange());
 
 final sessionPersistenceProvider = Provider<SessionPersistence>((ref) {
   return SessionPersistence(ref.watch(secureStorageProvider));

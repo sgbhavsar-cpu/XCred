@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
+import '../vault/attachment_repository.dart';
 import '../vault/credential_group_repository.dart';
 import '../vault/credential_repository.dart';
 import '../vault/credential_type_meta.dart';
@@ -11,6 +12,10 @@ import 'core_providers.dart';
 
 final credentialRepositoryProvider = Provider<CredentialRepository>((ref) {
   return CredentialRepository(ref.watch(apiClientProvider), ref.watch(databaseProvider));
+});
+
+final attachmentRepositoryProvider = Provider<AttachmentRepository>((ref) {
+  return AttachmentRepository(ref.watch(apiClientProvider));
 });
 
 final credentialGroupRepositoryProvider = Provider<CredentialGroupRepository>((ref) {
