@@ -59,6 +59,14 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Credentials')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final saved = await context.push<bool>('/credentials/new');
+          if (saved == true) _refresh();
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Add Credential'),
+      ),
       body: Column(
         children: [
           Padding(

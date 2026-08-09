@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/models/credential_models.dart';
@@ -13,10 +14,10 @@ import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
 
-/// MOB-CRED-02 — read-only credential detail: every populated field per its [FieldDef]
-/// type, reveal/hide for passwords, copy with the real clipboard-clear countdown, smart
-/// links. Edit/Delete/Share/Attachments are later sprints (1.4/1.6/2.x) — this is
-/// deliberately the read path only, matching the sprint's scope.
+/// MOB-CRED-02/03 — credential detail: every populated field per its [FieldDef] type,
+/// reveal/hide for passwords, copy with the real clipboard-clear countdown, smart links,
+/// and (as of Sprint 1.4) an Edit action. Delete/Share/Attachments are later sprints
+/// (1.6/2.x).
 class CredentialDetailScreen extends ConsumerStatefulWidget {
   const CredentialDetailScreen({required this.credentialId, super.key});
   final String credentialId;
@@ -127,7 +128,21 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
   Widget build(BuildContext context) {
     final cred = _cred;
     return Scaffold(
-      appBar: AppBar(title: Text(_loading ? '' : (cred != null ? _name : 'Credential'))),
+      appBar: AppBar(
+        title: Text(_loading ? '' : (cred != null ? _name : 'Credential')),
+        actions: [
+          if (cred != null)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit',
+              onPressed: () async {
+                final saved =
+                    await context.push<bool>('/credentials/${widget.credentialId}/edit');
+                if (saved == true) _load();
+              },
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

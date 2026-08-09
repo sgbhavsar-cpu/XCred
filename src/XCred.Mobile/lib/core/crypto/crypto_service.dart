@@ -20,6 +20,17 @@ class AesGcmCiphertext {
   const AesGcmCiphertext({required this.ciphertextB64, required this.ivB64});
 }
 
+class EncryptedCredential {
+  final String encryptedData;
+  final String dataIv;
+  final String encryptedCredentialKey;
+  const EncryptedCredential({
+    required this.encryptedData,
+    required this.dataIv,
+    required this.encryptedCredentialKey,
+  });
+}
+
 class RsaKeyPairB64 {
   final String publicKeySpkiB64;
   final String privateKeyPkcs8B64;
@@ -130,6 +141,24 @@ class CryptoService {
     cipher.init(false, pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey));
     final rawKey = cipher.process(encryptedBytes);
     return cg.SecretKey(rawKey);
+  }
+
+  /// Matches vault.ts `encryptCredentialData` — generates a fresh per-credential AES
+  /// key, encrypts the JSON payload, and wraps the key with the owner's own public key
+  /// (envelope encryption; re-wrapping the same underlying key for a recipient's public
+  /// key is how sharing works, added in a later sprint).
+  Future<EncryptedCredential> encryptCredentialFields({
+    required Map<String, dynamic> payload,
+    required String publicKeySpkiB64,
+  }) async {
+    final credentialKey = await generateCredentialKey();
+    final enc = await encrypt(credentialKey, jsonEncode(payload));
+    final wrappedKey = await encryptKeyWithPublicKey(publicKeySpkiB64, credentialKey);
+    return EncryptedCredential(
+      encryptedData: enc.ciphertextB64,
+      dataIv: enc.ivB64,
+      encryptedCredentialKey: wrappedKey,
+    );
   }
 
   /// Matches vault.ts `decryptCredentialData` — unwraps the per-credential AES key,

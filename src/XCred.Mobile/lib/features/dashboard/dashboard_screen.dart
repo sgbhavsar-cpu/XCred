@@ -42,6 +42,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             '/api/dashboard',
             (json) => json as Map<String, dynamic>,
           );
+      if (!mounted) return;
       setState(() => _dashboard = data);
       final orgSettingsJson = data['orgSettings'] as Map<String, dynamic>?;
       if (orgSettingsJson != null) {
@@ -50,7 +51,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             .set(OrgSettings.fromJson(orgSettingsJson));
       }
     } catch (e) {
-      setState(() => _error = 'Could not load dashboard: $e');
+      if (mounted) setState(() => _error = 'Could not load dashboard: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

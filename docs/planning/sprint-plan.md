@@ -232,6 +232,42 @@ deliberate scope-matching: this sprint only reads tags, never manages them; a re
 
 ### Sprint 1.4 — Credential Create/Edit, All Types, Password Generator
 
+**Status: Done (2026-08-09).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend. Scoping note on MOB-CRED-03's per-type matrix: rather than
+literally driving all 19 types through the UI, two focused tests cover every distinct
+*field type* (text/password/textarea/select/url/list) and every cross-cutting concern
+(generator, custom fields, tags/folder/group pickers, expiry) — the 19 types share one
+uniform, data-driven rendering/serialization code path (`kCredentialFields` drives
+`_buildField`; no per-type branches exist anywhere in `credential_form_screen.dart`), so
+exhaustive UI repetition would re-test the same code path 19 times, not add real
+coverage. `integration_test/credential_form_test.dart`:
+1. Create a WebsiteLogin using the password generator end-to-end (open sheet, regenerate,
+   "Use This Password" writes back), save, verify the username field round-tripped, then
+   edit the URL and confirm the type picker is hidden and the update persisted.
+2. Create a NetworkDevice with a 3-item list field (remove the middle one → verify
+   `[10.0.0.1, 10.0.0.3]` survives reload in order), 2 custom fields, a tag, a real
+   folder, a real credential group, and an expiry date — all five survive save + reload.
+
+Real bugs found and fixed along the way (all in app code, not just tests):
+- `DashboardScreen._load()` had a genuine `setState()`-after-dispose gap — two of its
+  three `setState` calls weren't `mounted`-guarded (only the `finally` block's was),
+  latent since Sprint 1.1 and only surfaced once a test navigated away mid-fetch.
+- The form screen originally used `ListView(children: [...])` for a bounded-size form.
+  Unlike `SingleChildScrollView`/`Column` (used successfully in Login/Register),
+  `ListView` is Sliver-backed and lazily builds only children near the viewport even
+  with a fixed children list — fields further down the form didn't exist in the widget
+  tree until scrolled into view. Switched to `SingleChildScrollView(child: Column(...))`.
+- List-field rows now carry explicit `Key`s (`list_<fieldKey>_<index>`) — needed for
+  reliable test targeting once multiple same-shaped empty `TextFormField`s exist on one
+  screen, and cheap, permanent test-ergonomics value even outside this one sprint.
+- MOB-GEN-01's "disable generation with a clear message" requirement is a deliberate
+  mobile improvement over web's current behavior — crypto.ts's `generatePassword`
+  silently falls back to lowercase-only when every character class is toggled off;
+  `generatePassword()` here returns `null` instead, the sheet shows an inline message in
+  place of a password, and "Use This Password" disables (Regenerate stays tappable but
+  is a no-op until at least one class is re-enabled). Not filed as a web bug fix (out of
+  scope this session), but worth knowing web and mobile deliberately diverge here.
+
 **MOB-CRED-03: Create/edit form shell + type picker** (FR-CRED-02)
 - As a user, I pick a credential type from a grid and get the right fields for it.
 - Acceptance criteria: type picker shown on create only (immutable after creation,
