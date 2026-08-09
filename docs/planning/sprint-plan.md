@@ -179,6 +179,27 @@ query can never block login itself.
 
 ### Sprint 1.3 — Credentials List & Detail (Read Path)
 
+**Status: Done (2026-08-09).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend's real data — `xcred_admin` already had 56 credentials across
+3 Credential Groups from earlier web Playwright runs, created with the same crypto
+scheme (confirmed interoperable in the Sprint 0.2 spike): a strong end-to-end proof this
+app's field rendering and `CryptoService` are correct against real cross-platform data,
+not just self-consistent. Three integration tests:
+`integration_test/credentials_read_path_test.dart` (tree renders, search narrows to a
+guaranteed-no-match empty state and back, detail screen decrypts and renders real
+fields, copy shows the live countdown toast) and
+`integration_test/offline_cache_test.dart` (MOB-SYNC-01: real online load populates the
+drift cache, then a simulated network failure falls back to the cache with the offline
+banner, still rendering real decrypted data). Real `adb shell svc data disable`
+connectivity cuts proved too fragile to interleave reliably with a running `flutter test`
+process, so the offline test instead wraps the real `ApiClient` in a toggleable fake via
+the same provider-override seam already used for `BiometricGate` — a deterministic,
+Dart-level "network unreachable" simulation rather than real radio state, with
+everything else (drift, real login, real decryption) genuine. Tags are stored as an
+embedded JSON column on the cached credential row for this sprint (not a join table) —
+deliberate scope-matching: this sprint only reads tags, never manages them; a real
+`tags`/`credential_tags` schema arrives with Sprint 1.5's Tag CRUD.
+
 **MOB-CRED-01: Credentials tree screen** (FR-CRED-01)
 - As a user, I browse my vault as an expandable tree of Credential Groups + an ungrouped
   section, with search and type filtering.

@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/providers/core_providers.dart';
 import '../../core/session/org_settings.dart';
 
 /// Placeholder landing screen — the real Dashboard (FR-DASH-01..04, stat cards,
-/// expiring-soon list, activity feed) is Sprint 1.3+ scope per sprint-plan.md, not this
+/// expiring-soon list, activity feed) is Sprint 1.4+ scope per sprint-plan.md, not this
 /// sprint. This exists to prove the full authenticated loop end-to-end: dio attaches
 /// the JWT from [authSessionProvider], the request reaches the real dev backend, and the
 /// response is unwrapped through [ApiClient] exactly like any other screen will — and,
 /// as of Sprint 1.2, to populate [orgSettingsProvider] (the same place the web app's
-/// hardcoded-defaults bug originated, per this session's web fix) and host the
-/// Lock Now / Log Out actions until Settings (later sprint) exists.
+/// hardcoded-defaults bug originated, per this session's web fix), host the
+/// Lock Now / Log Out actions until Settings (later sprint) exists, and as of Sprint 1.3,
+/// link into the real Credentials tree.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -101,6 +103,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _StatCard(
                           label: 'Credentials',
                           value: '${_dashboard!['totalCredentials']}',
+                          onTap: () => context.push('/credentials'),
                         ),
                         const SizedBox(width: 12),
                         _StatCard(
@@ -111,11 +114,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _StatCard(label: 'Teams', value: '${_dashboard!['groupCount']}'),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => context.push('/credentials'),
+                      icon: const Icon(Icons.folder_shared_outlined),
+                      label: const Text('Browse Credentials'),
+                    ),
+                    const SizedBox(height: 16),
                     const Text(
-                      'This is a Sprint 1.2 placeholder — full Dashboard, Credentials '
-                      'tree, and every other screen from docs/planning/high-level-design.md '
-                      'are later sprints.',
+                      'This is a Sprint 1.4+ placeholder — full Dashboard stats/activity '
+                      'and every other screen from docs/planning/high-level-design.md are '
+                      'later sprints.',
                     ),
                   ],
                 ],
@@ -126,21 +135,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({required this.label, required this.value, this.onTap});
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            children: [
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
-            ],
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              children: [
+                Text(value, style: Theme.of(context).textTheme.headlineSmall),
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
           ),
         ),
       ),

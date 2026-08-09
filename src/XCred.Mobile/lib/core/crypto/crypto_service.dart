@@ -132,6 +132,20 @@ class CryptoService {
     return cg.SecretKey(rawKey);
   }
 
+  /// Matches vault.ts `decryptCredentialData` — unwraps the per-credential AES key,
+  /// decrypts the JSON payload, and parses it. Every credential list/detail screen
+  /// funnels through here rather than re-deriving the unwrap+decrypt+parse sequence.
+  Future<Map<String, dynamic>> decryptCredentialFields({
+    required String encryptedData,
+    required String dataIv,
+    required String encryptedCredentialKey,
+    required pc.RSAPrivateKey privateKey,
+  }) async {
+    final credentialKey = decryptKeyWithPrivateKey(privateKey, encryptedCredentialKey);
+    final plaintext = await decrypt(credentialKey, encryptedData, dataIv);
+    return jsonDecode(plaintext) as Map<String, dynamic>;
+  }
+
   pc.OAEPEncoding _oaepCipher() => pc.OAEPEncoding.withSHA256(pc.RSAEngine());
 
   Uint8List _randomBytes(int length) {

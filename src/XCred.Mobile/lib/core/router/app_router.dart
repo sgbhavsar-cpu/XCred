@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/login_screen.dart';
 import '../../features/auth/register_screen.dart';
+import '../../features/credentials/credential_detail_screen.dart';
+import '../../features/credentials/credentials_tree_screen.dart';
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/session/unlock_screen.dart';
 import '../../features/setup/server_setup_screen.dart';
@@ -58,6 +60,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
       GoRoute(path: '/unlock', builder: (context, state) => const UnlockScreen()),
       GoRoute(path: '/dashboard', builder: (context, state) => const DashboardScreen()),
+      GoRoute(path: '/credentials', builder: (context, state) => const CredentialsTreeScreen()),
+      GoRoute(
+        path: '/credentials/:id',
+        builder: (context, state) =>
+            CredentialDetailScreen(credentialId: state.pathParameters['id']!),
+      ),
     ],
   );
 });
