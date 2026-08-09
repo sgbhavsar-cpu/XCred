@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_response.dart';
 import '../../core/auth/auth_repository.dart';
+import '../../core/auth/auth_session.dart';
+import '../../core/crypto/crypto_service.dart';
 import '../../core/providers/core_providers.dart';
+import '../session/biometric_enroll_dialog.dart';
 
 /// FR-AUTH-02 — three fields, deliberately not collapsed (see
 /// docs/planning/high-level-design.md §1.2): the login password authenticates to the
@@ -45,6 +48,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             loginPassword: _loginPassword.text,
             masterPassword: _masterPassword.text,
           );
+      await _handlePostLoginEnrollment(session);
+      ref.invalidate(resumableSessionProvider);
       ref.read(authSessionProvider.notifier).setSession(session);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -54,6 +59,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       setState(() => _error = 'Something went wrong. Please try again.');
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// MOB-SESS-01 — runs before [authSessionProvider] is set so the enrollment dialog
+  /// (if shown) appears on top of this screen rather than racing the router's redirect
+  /// to /dashboard. If a wrapped key already exists (re-login via the /unlock screen's
+  /// "enter master password instead" escape hatch), just refresh the persisted tokens —
+  /// don't re-ask.
+  Future<void> _handlePostLoginEnrollment(AuthSession session) async {
+    final vault = ref.read(secureVaultStorageProvider);
+    final persistence = ref.read(sessionPersistenceProvider);
+
+    if (await vault.hasWrappedKey()) {
+      await persistence.save(session);
+      return;
+    }
+    if (await persistence.hasAskedBiometricEnrollment()) return;
+
+    // Bounded: a slow/stuck platform-channel query (seen on some emulator images with
+    // no enrolled biometrics/PIN configured) must never be able to block login itself —
+    // this check is a silent background probe, not something the user is waiting on.
+    final available = await ref
+        .read(biometricGateProvider)
+        .isAvailable()
+        .timeout(const Duration(seconds: 3), onTimeout: () => false);
+    if (!available || !mounted) return;
+
+    final wantsEnroll = await showBiometricEnrollDialog(context);
+    await persistence.markBiometricEnrollmentAsked();
+    if (!wantsEnroll) return;
+
+    final confirmed =
+        await ref.read(biometricGateProvider).authenticate('Enable Quick Unlock');
+    if (confirmed) {
+      await vault.storeWrappedKey(encodePkcs8(session.privateKey));
+      await persistence.save(session);
     }
   }
 

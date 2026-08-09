@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
+import 'core/session/idle_lock_gate.dart';
 import 'core/theme/app_theme.dart';
 
 void main() {
@@ -23,6 +24,7 @@ class XCredApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       routerConfig: router,
+      builder: (context, child) => IdleLockGate(child: child!),
     );
   }
 }

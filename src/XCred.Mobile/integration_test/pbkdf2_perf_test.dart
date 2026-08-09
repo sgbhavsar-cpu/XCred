@@ -3,7 +3,6 @@
 // device), not `flutter test`, because the whole point is measuring the native-accelerated
 // path cryptography_flutter provides — `flutter test` runs pure-Dart on the host machine's
 // CPU, which tells us nothing about real Android unlock latency.
-import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:xcred_mobile/core/crypto/crypto_service.dart';
@@ -12,7 +11,8 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('PBKDF2-SHA256 600k iterations timing', (tester) async {
-    FlutterCryptography.enable();
+    // cryptography_flutter registers itself as a plugin automatically as of 2.x — see
+    // main.dart's comment on the same point.
     final service = CryptoService();
     const password = 'Admin@#1234%^&*()';
     final salt = service.generateSalt();

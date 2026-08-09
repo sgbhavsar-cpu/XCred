@@ -14,6 +14,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:xcred_mobile/main.dart';
 
+/// Sprint 1.2 added a one-time-per-device biometric-enrollment dialog after a fresh
+/// login (MOB-SESS-01) — it awaits the user's answer, so `pumpAndSettle` right after
+/// tapping "Log In" would hang forever (the button's spinner keeps animating until the
+/// dialog is answered, but nothing answers it until `pumpAndSettle` returns). Poll for
+/// either outcome, then dismiss the dialog if it showed up — this test isn't about
+/// enrollment, see session_lifecycle_test.dart for that.
+Future<void> _pumpUntilAny(WidgetTester tester, List<Finder> finders,
+    {int maxTries = 40}) async {
+  for (var i = 0; i < maxTries; i++) {
+    if (finders.any((f) => f.evaluate().isNotEmpty)) return;
+    await tester.pump(const Duration(milliseconds: 500));
+  }
+}
+
 /// The server URL persists in drift across app launches, so within one test binary run
 /// (both `testWidgets` blocks share the same on-device SQLite file) the second test's
 /// fresh `pumpWidget` lands directly on /login, skipping /setup entirely — this is
@@ -90,6 +104,12 @@ void main() {
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Master password'), 'Admin@#1234%^&*()');
     await tester.tap(find.text('Log In'));
+    final dashboardFinder = find.textContaining('Hi, xcred_admin');
+    final enrollDialogFinder = find.text('Enable Quick Unlock?');
+    await _pumpUntilAny(tester, [dashboardFinder, enrollDialogFinder]);
+    if (enrollDialogFinder.evaluate().isNotEmpty) {
+      await tester.tap(find.widgetWithText(TextButton, 'Not Now'));
+    }
     await tester.pumpAndSettle(const Duration(seconds: 15));
 
     // Reaching the dashboard proves: server accepted the login password, the derived

@@ -130,6 +130,20 @@ offline.*
 
 ### Sprint 1.2 — Vault Unlock & Session
 
+**Status: Done (2026-08-09).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend (`integration_test/session_lifecycle_test.dart`): enroll on
+first login → app-restart lands on `/unlock` → biometric check unwraps the real private
+key with no network call → Lock Now soft-locks and re-resumes via Unlock → Log Out clears
+persisted material and lands back on `/login`. Real biometric hardware isn't available in
+this environment (no fingerprint/PIN enrolled on the AVD), so `BiometricGate` was swapped
+for a fake via the same Riverpod-provider-override seam architecture.md §5 describes for
+this purpose — everything else (`flutter_secure_storage`, drift, the router redirect
+guard, the real backend calls) is real. Two real bugs found and fixed along the way: (1)
+`local_auth` needs `FlutterFragmentActivity`, not `FlutterActivity` — fixed in
+`MainActivity.kt`; (2) a background `BiometricGate.isAvailable()` probe during
+post-login enrollment had no bound — added a 3s timeout so a slow/stuck platform-channel
+query can never block login itself.
+
 **MOB-SESS-01: Biometric/PIN unlock enrollment** (FR-SESS-01)
 - As a user, after my first full login, I'm offered to enable biometric/PIN unlock so I
   don't retype my master password every time.

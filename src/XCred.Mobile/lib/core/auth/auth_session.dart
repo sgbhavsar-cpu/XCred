@@ -17,8 +17,10 @@ class AuthSession {
   final String publicKeySpkiB64;
 
   /// The derived PBKDF2 key — kept only for re-deriving/changing the master password
-  /// within this session; never sent to the server.
-  final cg.SecretKey masterKey;
+  /// within this session; never sent to the server. Null when the session came from
+  /// [BiometricGate] unlock rather than a full master-password login (FR-AUTH-05's
+  /// change-master-password flow re-prompts for it when actually needed).
+  final cg.SecretKey? masterKey;
 
   /// The decrypted RSA private key — used to unwrap per-credential AES keys.
   final pc.RSAPrivateKey privateKey;

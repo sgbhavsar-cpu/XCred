@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/core_providers.dart';
+import '../../core/session/org_settings.dart';
 
 /// Placeholder landing screen — the real Dashboard (FR-DASH-01..04, stat cards,
-/// expiring-soon list, activity feed) is Sprint 1.x scope per sprint-plan.md, not this
-/// sprint. This exists only to prove the full authenticated loop end-to-end: dio attaches
+/// expiring-soon list, activity feed) is Sprint 1.3+ scope per sprint-plan.md, not this
+/// sprint. This exists to prove the full authenticated loop end-to-end: dio attaches
 /// the JWT from [authSessionProvider], the request reaches the real dev backend, and the
-/// response is unwrapped through [ApiClient] exactly like any other screen will.
+/// response is unwrapped through [ApiClient] exactly like any other screen will — and,
+/// as of Sprint 1.2, to populate [orgSettingsProvider] (the same place the web app's
+/// hardcoded-defaults bug originated, per this session's web fix) and host the
+/// Lock Now / Log Out actions until Settings (later sprint) exists.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -37,11 +41,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             (json) => json as Map<String, dynamic>,
           );
       setState(() => _dashboard = data);
+      final orgSettingsJson = data['orgSettings'] as Map<String, dynamic>?;
+      if (orgSettingsJson != null) {
+        ref
+            .read(orgSettingsProvider.notifier)
+            .set(OrgSettings.fromJson(orgSettingsJson));
+      }
     } catch (e) {
       setState(() => _error = 'Could not load dashboard: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _lockNow() async {
+    // Soft lock: clears the in-memory session only. The wrapped key in
+    // SecureVaultStorage and the persisted tokens stay put, so the next app open goes
+    // to /unlock (fast re-entry), not /login — MOB-SESS-03's distinction from Log Out.
+    ref.read(authSessionProvider.notifier).clear();
+  }
+
+  Future<void> _logOut() async {
+    await ref.read(sessionPersistenceProvider).clear();
+    await ref.read(secureVaultStorageProvider).clear();
+    ref.invalidate(resumableSessionProvider);
+    ref.read(authSessionProvider.notifier).clear();
   }
 
   @override
@@ -52,9 +76,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         title: Text('Hi, ${session?.username ?? ''}'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Lock now',
+            onPressed: _lockNow,
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
-            onPressed: () => ref.read(authSessionProvider.notifier).clear(),
+            onPressed: _logOut,
           ),
         ],
       ),
@@ -84,7 +113,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'This is a Sprint 1.1 placeholder — full Dashboard, Credentials '
+                      'This is a Sprint 1.2 placeholder — full Dashboard, Credentials '
                       'tree, and every other screen from docs/planning/high-level-design.md '
                       'are later sprints.',
                     ),

@@ -7,6 +7,10 @@ import '../auth/auth_repository.dart';
 import '../auth/auth_session.dart';
 import '../crypto/crypto_service.dart';
 import '../db/app_database.dart';
+import '../platform/biometric_gate.dart';
+import '../platform/secure_vault_storage.dart';
+import '../session/org_settings.dart';
+import '../session/session_persistence.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -87,3 +91,36 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(ref.watch(apiClientProvider), ref.watch(cryptoServiceProvider));
 });
+
+final secureVaultStorageProvider = Provider<SecureVaultStorage>((ref) {
+  return FlutterSecureVaultStorage(ref.watch(secureStorageProvider));
+});
+
+final biometricGateProvider = Provider<BiometricGate>((ref) => LocalAuthBiometricGate());
+
+final sessionPersistenceProvider = Provider<SessionPersistence>((ref) {
+  return SessionPersistence(ref.watch(secureStorageProvider));
+});
+
+/// True when a wrapped private key *and* persisted tokens/user info both exist — the
+/// precondition for showing `/unlock` instead of `/login` on app start
+/// (architecture.md §3.2). Re-read via `ref.invalidate` whenever either half changes
+/// (enrollment, logout) so the router redirect reflects it immediately.
+final resumableSessionProvider = FutureProvider<bool>((ref) async {
+  final persisted = await ref.watch(sessionPersistenceProvider).load();
+  final hasKey = await ref.watch(secureVaultStorageProvider).hasWrappedKey();
+  return persisted != null && hasKey;
+});
+
+/// Populated from `GET /api/dashboard`'s `orgSettings` field once per session (matching
+/// the web app's `AppLayout` pattern) — see [OrgSettings] for why this can't default to
+/// hardcoded literals.
+class OrgSettingsNotifier extends Notifier<OrgSettings> {
+  @override
+  OrgSettings build() => OrgSettings.defaults;
+
+  void set(OrgSettings settings) => state = settings;
+}
+
+final orgSettingsProvider =
+    NotifierProvider<OrgSettingsNotifier, OrgSettings>(OrgSettingsNotifier.new);
