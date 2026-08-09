@@ -58,4 +58,31 @@ class CredentialRepository {
       return null;
     }
   }
+
+  /// Assigns (or clears, when [groupId] is null) a credential's Credential Group without
+  /// touching its encrypted payload — mirrors the web app's `assignToGroup`: fetch the
+  /// current ciphertext blind (no decrypt needed), PUT it back with every other field
+  /// unchanged except `credentialGroupId`. Used by the group detail screen's "add
+  /// existing" / "remove from group" actions.
+  Future<void> setCredentialGroup(String credentialId, String? groupId) async {
+    final current = await _api.get<Map<String, dynamic>>(
+      '/api/credentials/$credentialId',
+      (json) => json as Map<String, dynamic>,
+    );
+    await _api.put<Map<String, dynamic>>(
+      '/api/credentials/$credentialId',
+      (json) => json as Map<String, dynamic>,
+      data: {
+        'encryptedData': current['encryptedData'],
+        'dataIv': current['dataIv'],
+        'encryptedCredentialKey': current['encryptedCredentialKey'],
+        'expiryDate': current['expiryDate'],
+        'folderId': current['folderId'],
+        'credentialGroupId': groupId,
+        'tagIds': ((current['tags'] as List<dynamic>?) ?? [])
+            .map((t) => (t as Map<String, dynamic>)['id'])
+            .toList(),
+      },
+    );
+  }
 }

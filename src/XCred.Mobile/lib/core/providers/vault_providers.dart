@@ -1,11 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../api/api_response.dart';
 import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
 import '../vault/credential_group_repository.dart';
 import '../vault/credential_repository.dart';
 import '../vault/credential_type_meta.dart';
+import '../vault/folder_repository.dart';
+import '../vault/tag_repository.dart';
 import 'core_providers.dart';
 
 final credentialRepositoryProvider = Provider<CredentialRepository>((ref) {
@@ -16,29 +17,43 @@ final credentialGroupRepositoryProvider = Provider<CredentialGroupRepository>((r
   return CredentialGroupRepository(ref.watch(apiClientProvider), ref.watch(databaseProvider));
 });
 
-/// Picker-only, no offline cache — see core/models/folder_tag_models.dart's header for
-/// why (real Folder/Tag CRUD + caching is Sprint 1.5). Re-fetched fresh every time the
-/// credential form screen builds, matching the web app's own `loadMeta()` pattern.
-final folderPickerProvider = FutureProvider.autoDispose<List<FlatFolder>>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  try {
-    final data = await api.get<List<dynamic>>('/api/folders', (json) => json as List<dynamic>);
-    final tree = data.map((e) => FolderNode.fromJson(e as Map<String, dynamic>)).toList();
-    return flattenFolders(tree);
-  } on ApiException {
-    return const [];
-  }
+final folderRepositoryProvider = Provider<FolderRepository>((ref) {
+  return FolderRepository(ref.watch(apiClientProvider));
 });
 
-final tagPickerProvider = FutureProvider.autoDispose<List<TagSummary>>((ref) async {
-  final api = ref.watch(apiClientProvider);
-  try {
-    final data = await api.get<List<dynamic>>('/api/tags', (json) => json as List<dynamic>);
-    return data.map((e) => TagSummary.fromJson(e as Map<String, dynamic>)).toList();
-  } on ApiException {
-    return const [];
-  }
+final tagRepositoryProvider = Provider<TagRepository>((ref) {
+  return TagRepository(ref.watch(apiClientProvider));
 });
+
+/// MOB-FOLD-01 — no offline cache (folders are metadata; re-fetched on every visit,
+/// matching the web app's own `loadFolders()`). Also used by the credential form's
+/// folder picker (flattened via [flattenFolders]).
+class FolderTreeNotifier extends AsyncNotifier<List<FolderNode>> {
+  @override
+  Future<List<FolderNode>> build() => ref.read(folderRepositoryProvider).getAll();
+
+  Future<void> refresh() async {
+    ref.invalidateSelf();
+    await future;
+  }
+}
+
+final folderTreeProvider =
+    AsyncNotifierProvider<FolderTreeNotifier, List<FolderNode>>(FolderTreeNotifier.new);
+
+/// MOB-TAG-01 — same reasoning as [folderTreeProvider].
+class TagListNotifier extends AsyncNotifier<List<TagSummary>> {
+  @override
+  Future<List<TagSummary>> build() => ref.read(tagRepositoryProvider).getAll();
+
+  Future<void> refresh() async {
+    ref.invalidateSelf();
+    await future;
+  }
+}
+
+final tagListProvider =
+    AsyncNotifierProvider<TagListNotifier, List<TagSummary>>(TagListNotifier.new);
 
 class VaultState {
   final List<CredentialListItem> credentials;

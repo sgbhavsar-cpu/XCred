@@ -51,6 +51,95 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     ]);
   }
 
+  static const _kGroupIconOptions = ['🏦', '📧', '🌐', '📱', '🏢', '🚗', '🏥', '📦'];
+
+  Future<void> _createGroup() async {
+    final nameController = TextEditingController();
+    var selectedIcon = _kGroupIconOptions[0];
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New Credential Group'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final icon in _kGroupIconOptions)
+                    ChoiceChip(
+                      label: Text(icon, style: const TextStyle(fontSize: 18)),
+                      selected: selectedIcon == icon,
+                      onSelected: (_) => setDialogState(() => selectedIcon = icon),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(hintText: 'e.g. "HDFC Bank"'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (created != true || nameController.text.trim().isEmpty) return;
+    try {
+      await ref
+          .read(credentialGroupRepositoryProvider)
+          .create(name: nameController.text.trim(), icon: selectedIcon);
+      await ref.read(credentialGroupsProvider.notifier).refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to create group.')));
+      }
+    }
+  }
+
+  Future<void> _deleteGroup(CredentialGroupSummary group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete "${group.name}"?'),
+        content: const Text('Its credentials will not be deleted, just unlinked.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(credentialGroupRepositoryProvider).delete(group.id);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to delete.')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vaultAsync = ref.watch(vaultProvider);
@@ -58,7 +147,16 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     final activeFilter = _search.isNotEmpty || _typeFilter != null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Credentials')),
+      appBar: AppBar(
+        title: const Text('Credentials'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.create_new_folder_outlined),
+            tooltip: 'New Credential Group',
+            onPressed: _createGroup,
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final saved = await context.push<bool>('/credentials/new');
@@ -180,7 +278,34 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
         leading: Text(group.icon, style: const TextStyle(fontSize: 22)),
         title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${members.length} credential${members.length == 1 ? '' : 's'}'),
-        trailing: Icon(isOpen ? Icons.expand_less : Icons.expand_more),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.add, size: 18),
+              tooltip: 'Add credential to this group',
+              onPressed: () async {
+                final saved =
+                    await context.push<bool>('/credentials/new?groupId=${group.id}');
+                if (saved == true) _refresh();
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined, size: 18),
+              tooltip: 'Manage group',
+              onPressed: () async {
+                await context.push('/credential-groups/${group.id}');
+                _refresh();
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              tooltip: 'Delete group',
+              onPressed: () => _deleteGroup(group),
+            ),
+            Icon(isOpen ? Icons.expand_less : Icons.expand_more),
+          ],
+        ),
         onTap: () => setState(() {
           _expanded.contains(group.id) ? _expanded.remove(group.id) : _expanded.add(group.id);
         }),

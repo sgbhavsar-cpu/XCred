@@ -313,6 +313,29 @@ Real bugs found and fixed along the way (all in app code, not just tests):
 
 ### Sprint 1.5 — Credential Groups, Folders, Tags
 
+**Status: Done (2026-08-09).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/folders_tags_groups_test.dart`: create
+a fresh Credential Group + Folder + Tag, assign one credential to all three, then delete
+each in turn and confirm the credential survives with that one association cleared each
+time (folder deletion doesn't touch the group/tag; tag deletion doesn't touch the
+folder/group; group deletion doesn't touch either) — the core "unlink, don't
+cascade-delete" contract shared by all three entities, and the sprint's explicit test
+case. Deliberately used fresh throwaway fixtures rather than the account's existing
+"E2E ..." seed data from earlier web/mobile testing, since this test is destructive.
+
+Folder/Tag picker read paths from Sprint 1.4's credential form were promoted to full
+repository-backed `AsyncNotifierProvider`s (`folderTreeProvider`/`tagListProvider`,
+replacing the picker-only `FutureProvider`s) so the same data now backs both the form's
+pickers and these new management screens — no duplicate fetch logic.
+
+One real test-authoring bug found and fixed (not an app bug): the `FilterChip` tap for
+tag selection intermittently missed because a preceding multi-line text field left the
+on-screen keyboard open — `ensureVisible`'s scroll target was computed against the
+keyboard-open viewport, then the keyboard closed before the tap fired, shifting the
+layout and leaving the tap aimed at a stale position. Fixed by explicitly dismissing the
+keyboard (`tester.testTextInput.receiveAction(TextInputAction.done)`) before interacting
+with anything below a multi-line field.
+
 **MOB-CGRP-01: Credential Group create/rename/delete + detail** (FR-CGRP-02/03)
 **MOB-FOLD-01: Folder tree create/rename/delete, nested** (FR-FOLD-01/02)
 **MOB-TAG-01: Tag create/rename/recolor/delete** (FR-TAG-01)

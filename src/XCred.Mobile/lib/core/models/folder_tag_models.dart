@@ -1,16 +1,16 @@
-// Mirrors XCred.Core.DTOs.Folders.FolderDto / Credentials.TagDto — picker-only models
-// for Sprint 1.4's credential form (no CRUD, no offline cache; real Folder/Tag
-// management screens with their own repositories/caching are Sprint 1.5 scope).
+// Mirrors XCred.Core.DTOs.Folders.FolderDto / Credentials.TagDto.
 class FolderNode {
   final String id;
   final String name;
   final String? parentFolderId;
+  final int credentialCount;
   final List<FolderNode> children;
 
   const FolderNode({
     required this.id,
     required this.name,
     this.parentFolderId,
+    required this.credentialCount,
     required this.children,
   });
 
@@ -18,6 +18,7 @@ class FolderNode {
         id: json['id'] as String,
         name: json['name'] as String,
         parentFolderId: json['parentFolderId'] as String?,
+        credentialCount: json['credentialCount'] as int? ?? 0,
         children: ((json['children'] as List<dynamic>?) ?? [])
             .map((c) => FolderNode.fromJson(c as Map<String, dynamic>))
             .toList(),
@@ -47,11 +48,18 @@ class TagSummary {
   final String id;
   final String name;
   final String color;
-  const TagSummary({required this.id, required this.name, required this.color});
+  final int credentialCount;
+  const TagSummary({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.credentialCount,
+  });
 
   factory TagSummary.fromJson(Map<String, dynamic> json) => TagSummary(
         id: json['id'] as String,
         name: json['name'] as String,
         color: json['color'] as String,
+        credentialCount: json['credentialCount'] as int? ?? 0,
       );
 }

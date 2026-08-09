@@ -6,10 +6,13 @@ import '../../features/auth/login_screen.dart';
 import '../../features/auth/register_screen.dart';
 import '../../features/credentials/credential_detail_screen.dart';
 import '../../features/credentials/credential_form_screen.dart';
+import '../../features/credentials/credential_group_detail_screen.dart';
 import '../../features/credentials/credentials_tree_screen.dart';
 import '../../features/dashboard/dashboard_screen.dart';
+import '../../features/folders/folders_screen.dart';
 import '../../features/session/unlock_screen.dart';
 import '../../features/setup/server_setup_screen.dart';
+import '../../features/tags/tags_screen.dart';
 import '../providers/core_providers.dart';
 
 /// Bridges Riverpod state into go_router's imperative `refreshListenable` — Sprint 0.1's
@@ -64,7 +67,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/credentials', builder: (context, state) => const CredentialsTreeScreen()),
       GoRoute(
         path: '/credentials/new',
-        builder: (context, state) => const CredentialFormScreen(),
+        builder: (context, state) => CredentialFormScreen(
+          initialGroupId: state.uri.queryParameters['groupId'],
+          initialFolderId: state.uri.queryParameters['folderId'],
+          initialTagId: state.uri.queryParameters['tagId'],
+        ),
       ),
       GoRoute(
         path: '/credentials/:id',
@@ -76,6 +83,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             CredentialFormScreen(credentialId: state.pathParameters['id']!),
       ),
+      GoRoute(
+        path: '/credential-groups/:id',
+        builder: (context, state) =>
+            CredentialGroupDetailScreen(groupId: state.pathParameters['id']!),
+      ),
+      GoRoute(path: '/folders', builder: (context, state) => const FoldersScreen()),
+      GoRoute(path: '/tags', builder: (context, state) => const TagsScreen()),
     ],
   );
 });

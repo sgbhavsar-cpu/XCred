@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_response.dart';
+import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
@@ -17,8 +18,21 @@ import 'widgets/password_generator_sheet.dart';
 /// custom fields, tags/folder/group pickers, expiry. Mirrors the web app's
 /// `CredentialFormPage.tsx` field-for-field.
 class CredentialFormScreen extends ConsumerStatefulWidget {
-  const CredentialFormScreen({this.credentialId, super.key});
+  const CredentialFormScreen({
+    this.credentialId,
+    this.initialGroupId,
+    this.initialFolderId,
+    this.initialTagId,
+    super.key,
+  });
   final String? credentialId;
+
+  /// Pre-selection when arriving via "Add credential" from a group/folder/tag's own
+  /// screen (e.g. `/credentials/new?groupId=...`) — matches web's `CredentialFormPage`
+  /// query-param handling. Ignored when editing.
+  final String? initialGroupId;
+  final String? initialFolderId;
+  final String? initialTagId;
 
   bool get isEdit => credentialId != null;
 
@@ -66,7 +80,13 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
     super.initState();
     _loading = widget.isEdit;
     _rebuildFieldControllers(_type);
-    if (widget.isEdit) _loadExisting();
+    if (widget.isEdit) {
+      _loadExisting();
+    } else {
+      _folderId = widget.initialFolderId;
+      _credentialGroupId = widget.initialGroupId;
+      if (widget.initialTagId != null) _selectedTagIds.add(widget.initialTagId!);
+    }
   }
 
   @override
@@ -543,8 +563,8 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
   }
 
   Widget _buildOrganisationSection() {
-    final foldersAsync = ref.watch(folderPickerProvider);
-    final tagsAsync = ref.watch(tagPickerProvider);
+    final foldersAsync = ref.watch(folderTreeProvider);
+    final tagsAsync = ref.watch(tagListProvider);
     final groupsAsync = ref.watch(credentialGroupsProvider);
 
     return Card(
@@ -578,12 +598,12 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
             ),
             const SizedBox(height: 16),
             foldersAsync.when(
-              data: (folders) => DropdownButtonFormField<String?>(
+              data: (tree) => DropdownButtonFormField<String?>(
                 initialValue: _folderId,
                 decoration: const InputDecoration(labelText: 'Folder'),
                 items: [
                   const DropdownMenuItem<String?>(value: null, child: Text('No Folder')),
-                  for (final f in folders)
+                  for (final f in flattenFolders(tree))
                     DropdownMenuItem<String?>(value: f.id, child: Text(f.indentedName)),
                 ],
                 onChanged: (v) => setState(() => _folderId = v),

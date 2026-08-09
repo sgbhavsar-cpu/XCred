@@ -12,8 +12,8 @@ import '../../core/session/org_settings.dart';
 /// response is unwrapped through [ApiClient] exactly like any other screen will — and,
 /// as of Sprint 1.2, to populate [orgSettingsProvider] (the same place the web app's
 /// hardcoded-defaults bug originated, per this session's web fix), host the
-/// Lock Now / Log Out actions until Settings (later sprint) exists, and as of Sprint 1.3,
-/// link into the real Credentials tree.
+/// Lock Now / Log Out actions until Settings (later sprint) exists, and as of Sprint
+/// 1.3/1.5, link into the real Credentials/Folders/Tags screens.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -120,6 +120,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       onPressed: () => context.push('/credentials'),
                       icon: const Icon(Icons.folder_shared_outlined),
                       label: const Text('Browse Credentials'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => context.push('/folders'),
+                            icon: const Icon(Icons.folder_outlined),
+                            label: const Text('Folders'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => context.push('/tags'),
+                            icon: const Icon(Icons.label_outline),
+                            label: const Text('Tags'),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     const Text(
