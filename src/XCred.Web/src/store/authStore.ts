@@ -9,6 +9,13 @@ interface UserInfo {
   role: string;
 }
 
+interface OrgSettings {
+  clipboardClearSeconds: number;
+  expiryWarningDays: number;
+  sessionTimeoutMinutes: number;
+  maxAttachmentSizeMb: number;
+}
+
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
@@ -16,15 +23,26 @@ interface AuthState {
   publicKey: string | null;        // RSA public key (base64) — persisted, used to encrypt new credentials
   symmetricKey: CryptoKey | null;  // Derived from master password — memory only
   privateKey: CryptoKey | null;    // RSA private key — memory only
+  orgSettings: OrgSettings | null; // Admin-configurable org settings, fetched from /dashboard — memory only
 
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: UserInfo) => void;
   setPublicKey: (publicKey: string) => void;
   setCryptoKeys: (symmetricKey: CryptoKey, privateKey: CryptoKey) => void;
+  setOrgSettings: (orgSettings: OrgSettings) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
   isAdmin: () => boolean;
 }
+
+// Fallback defaults — used only until /dashboard has loaded orgSettings for the session,
+// or if that fetch fails. Match the server's own defaults (AppSettingKeys seed data).
+export const DEFAULT_ORG_SETTINGS: OrgSettings = {
+  clipboardClearSeconds: 30,
+  expiryWarningDays: 30,
+  sessionTimeoutMinutes: 15,
+  maxAttachmentSizeMb: 10,
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -35,11 +53,13 @@ export const useAuthStore = create<AuthState>()(
       publicKey: null,
       symmetricKey: null,
       privateKey: null,
+      orgSettings: null,
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
       setUser: (user) => set({ user }),
       setPublicKey: (publicKey) => set({ publicKey }),
       setCryptoKeys: (symmetricKey, privateKey) => set({ symmetricKey, privateKey }),
+      setOrgSettings: (orgSettings) => set({ orgSettings }),
 
       logout: () => set({
         accessToken: null,
@@ -48,6 +68,7 @@ export const useAuthStore = create<AuthState>()(
         publicKey: null,
         symmetricKey: null,
         privateKey: null,
+        orgSettings: null,
       }),
 
       isAuthenticated: () => {

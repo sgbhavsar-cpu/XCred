@@ -182,7 +182,7 @@ function FolderTree({
           <div key={folder.id}>
             <div onClick={() => !isEditing && toggleExpand(folder.id)}
               className={cn('flex items-center gap-3 px-4 py-4', depth > 0 && 'bg-slate-50/60', !isEditing && 'cursor-pointer hover:bg-slate-50 transition-colors')}>
-              {depth > 0 && <div style={{ width: depth * 20 }} className="shrink-0" />}
+              {depth > 0 && <div style={{ width: Math.min(depth, 4) * 20 }} className="shrink-0" />}
               {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
 
               <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', depth === 0 ? 'bg-amber-100' : 'bg-amber-50')}>
@@ -227,7 +227,7 @@ function FolderTree({
 
             {isOpen && !isEditing && (
               members.length === 0 ? (
-                <div className="px-4 py-4 text-xs text-slate-400 bg-slate-50/50" style={{ paddingLeft: 20 * depth + 56 }}>
+                <div className="px-4 py-4 text-xs text-slate-400 bg-slate-50/50" style={{ paddingLeft: 20 * Math.min(depth, 4) + 56 }}>
                   No credentials directly in this folder yet. <button onClick={() => onAddCredential(folder.id)} className="text-indigo-600 hover:underline">Add one</button>.
                 </div>
               ) : (

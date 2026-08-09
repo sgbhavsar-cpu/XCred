@@ -1,14 +1,13 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, DEFAULT_ORG_SETTINGS } from '@/store/authStore';
 import api from '@/api/client';
-
-const TIMEOUT_MINUTES = 15;
 
 export function useSessionTimeout() {
   const navigate = useNavigate();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { isAuthenticated, logout, refreshToken } = useAuthStore();
+  const { isAuthenticated, logout, refreshToken, orgSettings } = useAuthStore();
+  const timeoutMinutes = orgSettings?.sessionTimeoutMinutes ?? DEFAULT_ORG_SETTINGS.sessionTimeoutMinutes;
 
   const resetTimer = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -20,8 +19,8 @@ export function useSessionTimeout() {
       }
       logout();
       navigate('/login?reason=session_expired');
-    }, TIMEOUT_MINUTES * 60 * 1000);
-  }, [isAuthenticated, logout, navigate, refreshToken]);
+    }, timeoutMinutes * 60 * 1000);
+  }, [isAuthenticated, logout, navigate, refreshToken, timeoutMinutes]);
 
   useEffect(() => {
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, DEFAULT_ORG_SETTINGS } from '@/store/authStore';
 import api from '@/api/client';
 import toast from 'react-hot-toast';
 
@@ -23,9 +23,8 @@ export function useClipboard(credentialId?: string) {
       api.post(`/credentials/${credentialId}/copy`, null, { params: { field: fieldName } }).catch(() => {});
     }
 
-    const orgSettings = useAuthStore.getState();
-    // Default 30s if settings not loaded yet
-    const clearAfter = 30;
+    const { orgSettings } = useAuthStore.getState();
+    const clearAfter = orgSettings?.clipboardClearSeconds ?? DEFAULT_ORG_SETTINGS.clipboardClearSeconds;
     setCountdown(clearAfter);
 
     clearTimers();

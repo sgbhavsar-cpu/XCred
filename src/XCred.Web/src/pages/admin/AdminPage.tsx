@@ -128,6 +128,7 @@ function UsersTab({ users, onDeactivate, onActivate, onSetRole }: {
 }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
@@ -175,6 +176,7 @@ function UsersTab({ users, onDeactivate, onActivate, onSetRole }: {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -183,6 +185,7 @@ function AuditTab({ logs }: { logs: any[] }) {
   if (logs.length === 0) return <div className="text-center py-16 text-slate-400">No audit logs yet.</div>;
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
@@ -203,6 +206,7 @@ function AuditTab({ logs }: { logs: any[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

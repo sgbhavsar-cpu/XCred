@@ -52,3 +52,6 @@ Thumbs.db
 # ── Build artifacts (regenerate via scripts/publish.ps1 / Inno Setup) ─────────
 /publish/
 installer/*.exe
+
+# ── Third-party redist binaries — fetch per installer/redist/README.md ───────
+installer/redist/*.msi

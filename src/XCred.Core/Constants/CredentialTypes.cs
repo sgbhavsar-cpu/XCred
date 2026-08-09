@@ -15,6 +15,7 @@ public static class CredentialTypes
     public const string BankAccount = "BankAccount";
     public const string MobileBankingPin = "MobileBankingPin";
     public const string NetworkDevice = "NetworkDevice";
+    public const string Rdp = "Rdp";
     public const string EmailAccount = "EmailAccount";
     public const string IdentityDocument = "IdentityDocument";
     public const string InsurancePolicy = "InsurancePolicy";
@@ -25,7 +26,7 @@ public static class CredentialTypes
     [
         WebsiteLogin, Database, ApiKey, SshKey, CreditCard,
         SecureNote, WiFi, SoftwareLicense, Certificate, EnvironmentVariables,
-        BankAccount, MobileBankingPin, NetworkDevice, EmailAccount,
+        BankAccount, MobileBankingPin, NetworkDevice, Rdp, EmailAccount,
         IdentityDocument, InsurancePolicy, RecoveryCodes, Generic
     ];
 }

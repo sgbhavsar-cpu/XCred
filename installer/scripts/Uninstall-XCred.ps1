@@ -18,3 +18,7 @@ Write-Host "Removing app pool '$poolName'..." -NoNewline
 Stop-WebAppPool -Name $poolName
 Remove-WebAppPool -Name $poolName
 Write-Host ' Done' -ForegroundColor Green
+
+Write-Host "Removing firewall rule..." -NoNewline
+Remove-NetFirewallRule -DisplayName "XCred - $SiteName"
+Write-Host ' Done' -ForegroundColor Green

@@ -31,8 +31,11 @@ export default function GroupsPage() {
   useEffect(() => { load(); }, []);
 
   const loadUsers = async () => {
-    const res = await api.get('/admin/users').catch(() => null);
-    if (res) setAvailableUsers(res.data.data.filter((u: any) => u.isActive && u.isApproved));
+    // /users (not /admin/users) — any authenticated user can call it, so a team-level
+    // (non-global) admin's "Add Member" picker actually gets a user list back instead
+    // of silently coming up empty against the admin-gated endpoint.
+    const res = await api.get('/users').catch(() => null);
+    if (res) setAvailableUsers(res.data.data);
   };
 
   const toggleExpand = (id: string) => setExpanded(prev => {
@@ -170,22 +173,22 @@ export default function GroupsPage() {
 
                   <div className="divide-y divide-slate-100">
                     {group.members.map(member => (
-                      <div key={member.userId} className="px-5 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600">
+                      <div key={member.userId} className="px-5 py-3 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0">
                             {member.username[0].toUpperCase()}
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{member.username}</p>
-                            <p className="text-xs text-slate-400">{member.email}</p>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{member.username}</p>
+                            <p className="text-xs text-slate-400 truncate">{member.email}</p>
                           </div>
-                          <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium ml-1', member.role === 'Admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600')}>
+                          <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium ml-1 shrink-0', member.role === 'Admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600')}>
                             {member.role}
                           </span>
                         </div>
                         {(group.myRole === 'Admin' || isAdmin()) && (
                           <button onClick={() => removeMember(group.id, member.userId, member.username)}
-                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
                             <UserMinus className="w-3.5 h-3.5" />
                           </button>
                         )}

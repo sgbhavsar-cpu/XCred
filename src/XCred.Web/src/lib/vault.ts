@@ -36,7 +36,7 @@ export interface FieldDef {
   rows?: number;
   // Drives the "open" action shown next to the field (see lib/links.ts). 'url'-type fields
   // already get an open action via `type`; this covers everything else that's launchable.
-  linkType?: 'email' | 'tel' | 'ssh' | 'network-device-ip';
+  linkType?: 'email' | 'tel' | 'ssh' | 'network-device-ip' | 'rdp';
 }
 
 export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
@@ -124,6 +124,13 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.1', linkType: 'network-device-ip' },
     { key: 'protocol', label: 'Protocol', type: 'select', options: ['Web', 'Telnet', 'SSH', 'Other'] },
     { key: 'port', label: 'Port', type: 'text', optional: true },
+    { key: 'username', label: 'Username', type: 'text' },
+    { key: 'password', label: 'Password', type: 'password' },
+  ],
+  Rdp: [
+    { key: 'host', label: 'Host / Server', type: 'text', placeholder: 'server.example.com or 192.168.1.10', linkType: 'rdp' },
+    { key: 'port', label: 'Port', type: 'text', placeholder: '3389', optional: true },
+    { key: 'domain', label: 'Domain', type: 'text', optional: true, placeholder: 'CONTOSO (leave blank for a local account)' },
     { key: 'username', label: 'Username', type: 'text' },
     { key: 'password', label: 'Password', type: 'password' },
   ],

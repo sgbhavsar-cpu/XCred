@@ -82,7 +82,7 @@ export default function RegisterPage() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
                 <input {...register('username')} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" autoComplete="username" />
@@ -95,7 +95,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Login Password</label>
                 <div className="relative">
@@ -122,7 +122,7 @@ export default function RegisterPage() {
 
             <div className="border-t border-slate-100 pt-4">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Master Password (Vault Encryption Key)</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Master Password</label>
                   <div className="relative">

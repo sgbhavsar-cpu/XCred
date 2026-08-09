@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, DEFAULT_ORG_SETTINGS } from '@/store/authStore';
 import { decryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
 import type { FieldDef } from '@/lib/vault';
 import { decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
@@ -31,7 +31,7 @@ interface PeerUser { id: string; username: string; email: string; publicKey: str
 export default function CredentialDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { privateKey } = useAuthStore();
+  const { privateKey, orgSettings } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [cred, setCred] = useState<CredentialDetail | null>(null);
@@ -162,7 +162,7 @@ export default function CredentialDetailPage() {
     const files = e.target.files;
     if (!files || files.length === 0 || !cred || !privateKey) return;
 
-    const maxMb = 10;
+    const maxMb = orgSettings?.maxAttachmentSizeMb ?? DEFAULT_ORG_SETTINGS.maxAttachmentSizeMb;
     for (const file of Array.from(files)) {
       if (file.size > maxMb * 1024 * 1024) {
         toast.error(`"${file.name}" is too large. Maximum size is ${maxMb} MB.`);
@@ -429,7 +429,7 @@ export default function CredentialDetailPage() {
             </span>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 pt-1 border-t border-slate-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400 pt-1 border-t border-slate-100">
           <span>Created {formatDateTime(cred.createdAt)}</span>
           <span>Updated {formatDateTime(cred.updatedAt)}</span>
         </div>

@@ -9,7 +9,9 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "XCred_Docker_Test_2026!"
     ports:
-      - "14330:1433"
+      # Bound to localhost only — the DB doesn't need to be reachable from the LAN,
+      # only from the api container (which reaches it over the internal compose network).
+      - "127.0.0.1:14330:1433"
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
       interval: 10s

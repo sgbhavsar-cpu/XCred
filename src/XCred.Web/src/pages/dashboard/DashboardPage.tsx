@@ -82,7 +82,7 @@ export default function DashboardPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Page header with logout */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 text-sm">Welcome back, <span className="font-medium text-slate-700">{user?.username}</span>. Your vault is encrypted and secure.</p>
@@ -96,7 +96,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard icon={<Key className="w-5 h-5 text-indigo-600" />} label="Total Credentials" value={data?.totalCredentials ?? 0} bg="bg-indigo-50" />
         <StatCard icon={<Share2 className="w-5 h-5 text-emerald-600" />} label="Shared With Me" value={data?.sharedWithMe ?? 0} bg="bg-emerald-50" />
         <StatCard icon={<Users className="w-5 h-5 text-violet-600" />} label="Groups" value={data?.groupCount ?? 0} bg="bg-violet-50" />

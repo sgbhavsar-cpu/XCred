@@ -64,7 +64,7 @@ function ProfileTab({ user }: { user: any }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
       <h2 className="font-semibold text-slate-800">Account Information</h2>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Info label="Username" value={profile?.username ?? user?.username} />
         <Info label="Email" value={profile?.email ?? user?.email} />
         <Info label="Role" value={profile?.role ?? user?.role} />
@@ -311,7 +311,7 @@ function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <p className="font-semibold text-emerald-800">Restore Complete</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-sm text-emerald-700">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-emerald-700">
               <span>Credentials restored: <b>{restoreResult.credentialsRestored}</b></span>
               <span>Skipped (duplicates): <b>{restoreResult.credentialsSkipped}</b></span>
               <span>Folders restored: <b>{restoreResult.foldersRestored}</b></span>

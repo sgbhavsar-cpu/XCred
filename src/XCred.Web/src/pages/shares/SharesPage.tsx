@@ -144,7 +144,7 @@ function SharedWithMe({ shares }: { shares: DecryptedShare[] }) {
             <StatusBadge expiresAt={s.expiresAt} untilChanged={s.untilChanged} />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <MetaItem icon={<User className="w-3.5 h-3.5" />} label="Shared by" value={s.sharedByUsername} />
             <MetaItem icon={<Clock className="w-3.5 h-3.5" />} label="Shared on" value={formatDate(s.createdAt)} />
             {s.expiresAt && (
@@ -199,7 +199,7 @@ function SharedByMe({ active, revoked, onRevoke }: {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   {s.sharedWithUsername && (
                     <MetaItem icon={<User className="w-3.5 h-3.5" />} label="Shared with" value={s.sharedWithUsername} />
                   )}

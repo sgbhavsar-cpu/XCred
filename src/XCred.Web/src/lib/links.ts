@@ -3,10 +3,12 @@ import type { FieldDef } from './vault';
 
 // Which schemes are reliable vs. best-effort (researched — see docs/requirements.md §11.1):
 // - http(s):, mailto:, tel: — natively handled by every browser, no setup required.
-// - ssh:, telnet: — valid IANA URI schemes, but neither browser ships a built-in handler;
+// - ssh:, telnet:, rdp: — valid URI schemes, but no browser ships a built-in handler;
 //   they only do anything if the user has registered a local app for that scheme
-//   (e.g. via Windows registry, PuTTY, OpenSSH). We still offer the link — it's a free
-//   convenience when configured, and a harmless no-op/browser error when it isn't.
+//   (e.g. via Windows registry, PuTTY, OpenSSH, or an RDP client). We still offer the
+//   link — it's a free convenience when configured, and a harmless no-op/browser error
+//   when it isn't. Unlike ssh://user@host, there's no well-established convention for
+//   embedding a username in an rdp:// URI, so this stays host:port only.
 
 export function mailtoLink(email: string): string {
   return `mailto:${email.trim()}`;
@@ -19,6 +21,12 @@ export function telLink(phone: string): string {
 export function sshLink(host: string, username?: string): string {
   const user = username?.trim();
   return `ssh://${user ? `${encodeURIComponent(user)}@` : ''}${host.trim()}`;
+}
+
+export function rdpLink(host: string, port?: string): string {
+  const trimmedPort = port?.trim();
+  const portSuffix = trimmedPort && trimmedPort !== '3389' ? `:${trimmedPort}` : '';
+  return `rdp://${host.trim()}${portSuffix}`;
 }
 
 export function networkDeviceLink(protocol: string, host: string, port?: string): string | null {
@@ -49,6 +57,7 @@ export function computeFieldLink(field: FieldDef, value: string, allValues: Reco
     case 'email': return mailtoLink(v);
     case 'tel': return telLink(v);
     case 'ssh': return sshLink(v, allValues.username);
+    case 'rdp': return rdpLink(v, allValues.port);
     default: return null;
   }
 }
@@ -68,6 +77,7 @@ export function linkTooltip(field: FieldDef): string {
     case 'email': return 'Open in your default mail app';
     case 'tel': return 'Call with your default phone/VoIP app';
     case 'ssh': return 'Open with your registered SSH handler, if one is configured (e.g. Windows OpenSSH or PuTTY registry setup) — otherwise nothing will happen';
+    case 'rdp': return 'Open with your registered RDP client, if one is configured to handle rdp:// links — otherwise nothing will happen';
     case 'network-device-ip': return 'Open — for Telnet/SSH this needs a registered handler app to actually do anything';
     default: return 'Open in a new tab';
   }

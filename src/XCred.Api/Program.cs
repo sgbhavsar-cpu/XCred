@@ -38,6 +38,12 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
 }
 
+// Lets the installer apply/verify the schema as its own explicit step (with
+// output captured in the install log) instead of only finding out about a
+// migration failure when it silently crashes the site on the first request.
+if (args.Contains("--migrate-only"))
+    return;
+
 app.UseMiddleware<ExceptionMiddleware>();
 
 if (app.Environment.IsDevelopment())

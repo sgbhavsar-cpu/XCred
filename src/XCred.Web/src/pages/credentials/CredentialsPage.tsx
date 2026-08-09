@@ -158,7 +158,7 @@ export default function CredentialsPage() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
           {isFiltered && (
             <button onClick={clearContextFilter}
@@ -240,8 +240,8 @@ export default function CredentialsPage() {
       )}
 
       {/* Search + type filter */}
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name, username, or tag…"
