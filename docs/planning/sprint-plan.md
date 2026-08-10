@@ -608,6 +608,47 @@ Settings-screen wiring that surfaces them together.
 
 ### Sprint 2.4 — Core Admin
 
+**Status: Done (2026-08-10).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/admin_test.dart`: a throwaway account
+registers and is approved through the real Pending-tab UI (not a raw API call, unlike
+every earlier sprint's setup step — MOB-ADMIN-02's Approve action needed to be genuinely
+exercised), then from the Users tab has its role changed User→Admin and is
+deactivated/reactivated, each round-tripping the server and reloading live rather than
+trusting local state; the Audit Log tab's action filter is confirmed to actually
+constrain results (every visible row matches the selected action) and paging to page 2
+is confirmed to load genuinely different entries — both proven against this session's
+real accumulated history (hundreds of prior actions across every earlier sprint), which
+is exactly the point: the web app's equivalent screen wires none of
+`page`/`pageSize`/`userId`/`action`/`from`/`to` at all (confirmed during research — not
+even partially), so there's no reference behavior to fall back on if these were wrong.
+
+Three real bugs found and fixed, none of them in the "business logic" — all in how the
+Admin screen manages state across its three tabs and a long list:
+- **Stale sibling-tab data.** `TabBarView` keeps adjacent tabs' State alive rather than
+  rebuilding them on every switch, so each tab originally fetching its own data once in
+  `initState()` meant approving a user from the Pending tab left the Users tab showing
+  whatever it had loaded before — indefinitely, not just until the next full screen
+  visit (the fix pattern used for the Shares screen in Sprint 2.1, `initState`-triggered
+  refresh, doesn't cover this case, since the tab is never *re-created*, just revealed).
+  Fixed by converting Users/Pending to both watch one shared `adminUsersProvider`
+  (Pending is just that same list filtered client-side for `!isApproved`), so any
+  action's `.refresh()` updates every watcher immediately regardless of which tab is
+  currently visible or how TabBarView is caching things.
+- **A `pumpAndSettle`-masked race**, the same class hit in Sprint 2.3 but a new trigger:
+  `pumpAndSettle` only waits for scheduled frames/animations, not for an in-flight async
+  call with no visible spinner — the Approve/role-change/deactivate actions just disable
+  a button (no continuous animation), so a bare `pumpAndSettle` right after the tap could
+  return before the request and its resulting refresh had actually finished. Fixed by
+  polling for the real outcome (card gone from Pending; dropdown showing the new role)
+  instead of trusting settle-then-immediately-check.
+- **An off-screen `ListView.builder` item**, the list-length variant of the
+  `ListView(children:)` lazy-build bug documented in `credential_form_screen.dart`: this
+  session alone has accumulated ~30 throwaway accounts across every earlier sprint's
+  tests, and `GetUsers` sorts pending-first then approved-alphabetically — so a
+  newly-approved user reliably sorts well past what fits the initial viewport. The
+  card wasn't missing data, it simply hadn't been built yet; fixed by scrolling to it
+  explicitly (`scrollUntilVisible`) rather than assuming a bounded-length list.
+
 **MOB-ADMIN-01: Users list, role change, activate/deactivate** (FR-ADMIN-01)
 **MOB-ADMIN-02: Pending approval** (FR-ADMIN-02)
 **MOB-ADMIN-03: Audit log with working filters** (FR-ADMIN-03)

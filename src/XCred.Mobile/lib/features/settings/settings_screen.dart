@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_response.dart';
 import '../../core/crypto/crypto_service.dart';
@@ -344,6 +345,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             onPressed: _changePassword,
                             child: const Text('Change Login Password'),
                           ),
+                          if (profile.role == 'Admin') ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => context.push('/admin'),
+                              icon: const Icon(Icons.admin_panel_settings_outlined, size: 18),
+                              label: const Text('Admin Panel'),
+                            ),
+                          ],
                           const SizedBox(height: 24),
                           _sectionHeader(context, 'SECURITY'),
                           Card(
