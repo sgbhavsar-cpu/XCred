@@ -738,6 +738,51 @@ screen this sprint modified (`credentials_read_path_test.dart`,
 
 ### Sprint 3.2 — Hardening & Release Prep
 
+**Status: Done (2026-08-10)** for everything that doesn't require a Google Play
+Console account (payment + identity verification, outside what an agent can do).
+Full write-ups: `docs/release/security-review.md` (MOB-SEC-01),
+`docs/release/privacy-policy.md`, `docs/release/play-store-listing.md`, and
+`docs/release/release-checklist.md` (MOB-REL-01 — the checklist tracks exactly what's
+done here vs. what needs a human with Play Console access).
+
+- **MOB-SEC-01.** The logging/crash-report requirement turned out to already be
+  satisfied by absence — a full sweep of `lib/` found no `print`/`debugPrint`/logging
+  calls and no crash-reporting or analytics SDK in `pubspec.yaml` at all, so there's
+  nothing that could leak sensitive material because there's no telemetry pipeline in
+  the app, period (recorded as a deliberate decision in the write-up so it isn't
+  silently reversed later without a redaction policy). The biometric re-prompt claim
+  was verified for real, not just read in the code: set a device PIN via `adb shell
+  locksettings set-pin` on the Pixel_10_Pro emulator (no fingerprint hardware
+  enrolled, but `BiometricGate.authenticate()`'s `biometricOnly: false` makes PIN a
+  valid fallback through the exact same `local_auth` call path), enabled "Quick
+  Unlock" for the first time in this project's testing (every earlier sprint's tests
+  chose "Not Now"), confirmed via `dumpsys window` a genuine system `BiometricPrompt`
+  window appeared, unlocked, tapped **Lock Now**, and confirmed a **second, differently
+  window-ID'd** `BiometricPrompt` appeared on the next unlock attempt — concrete
+  evidence of a fresh OS-level challenge each time, not a cached session — then
+  completed that second unlock successfully too. Cleared the test PIN afterward to
+  restore the emulator's prior state for other tests.
+- **MOB-REL-01.** Built from scratch, since none of it existed: a release keystore
+  (`keytool`, kept outside the repo, `key.properties` gitignored per the Flutter
+  template's own warning) wired into `android/app/build.gradle.kts`'s
+  `signingConfigs` (falls back to debug signing if the keystore file is absent, so a
+  fresh clone/CI still builds); verified the signing actually works by building
+  `flutter build appbundle --release` and checking the resulting `.aab`'s certificate
+  via `jarsigner -verify -verbose -certs` (`CN=XCred`, matching the new keystore, not
+  the debug cert). A real app icon (padlock glyph on the web app's own brand purple,
+  generated programmatically via the `image` Dart package rather than left as the
+  stock Flutter template icon Play Store would reject) wired through
+  `flutter_launcher_icons` for both Android adaptive icons and iOS. The app's display
+  name was still the Flutter-template default (`xcred_mobile`/"Xcred Mobile") in both
+  `AndroidManifest.xml` and iOS `Info.plist` — fixed to "XCred". Drafted a privacy
+  policy grounded in the actual zero-knowledge architecture (what the server does vs.
+  doesn't see, itemized from `requirements.md` §6.1/§6.4/§6.8) and Play Store listing
+  copy — both need a couple of `[TODO]` placeholders filled in (support email, a
+  public hosting URL for the policy) before actual submission, called out explicitly
+  in the release checklist. Play Console account creation, store graphics, the Data
+  Safety questionnaire, and the internal testing track itself all require a human with
+  Play Console access and are documented as remaining manual steps, not done here.
+
 **MOB-SEC-01: Security review**
 - Confirm no sensitive material in logs/crash reports (requirements §6.1); confirm
   `SecureVaultStorage` retrieval genuinely re-prompts biometric each call, not just once
