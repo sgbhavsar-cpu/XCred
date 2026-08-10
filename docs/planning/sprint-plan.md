@@ -407,6 +407,43 @@ the test), which trivially caused the filename to appear twice in the tree.
 
 ### Sprint 1.7 — Offline Sync (Write Path)
 
+**Status: Done (2026-08-10).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/offline_sync_test.dart`: edited a
+credential with the app's `ApiClient` toggled offline, confirmed a "queued offline" notice
+and that the local cache immediately reflected the edit, reconnected and pulled-to-refresh,
+then confirmed via a raw backend call that the queued mutation actually reached the server;
+then repeated with a *second* offline edit queued while a raw-API-simulated "web app" edit
+landed on the same credential in the meantime — confirmed the flush refused to apply the
+stale local edit, left it queued, surfaced the conflict banner naming the affected
+credential, and left the server's (web-edit) copy untouched.
+
+Scoped to **update** mutations only — the sprint's two test cases both cover editing an
+existing credential, not creating or deleting one offline; offline create would need
+client-generated temporary IDs reconciled against the server's real ID once synced, a
+distinct chunk of work not implied by what's actually tested here. Conflict detection
+compares the credential's `updatedAt` at flush time against what the edit was originally
+based on (`PendingMutation.baseUpdatedAt`) — the backend has no ETag/row-version field, so
+this is the closest available signal to "changed since I last saw it," with a 2-second
+tolerance to absorb whole-second precision truncation from drift's `DateTimeColumn` storage
+(a cache-sourced `baseUpdatedAt`, i.e. an edit made while already offline, is always
+truncated versus the server's real sub-second timestamp).
+
+Two real app bugs found and fixed while getting the test to pass reliably, both edge cases
+in provider lifecycle rather than the sync logic itself: `SyncNotifier.flush()` and
+`VaultNotifier._load()` could each throw an uncaught `UnmountedRefException` if the
+provider was disposed while a network round-trip was still in flight (harmless in normal
+app usage since these providers live for the whole session, but real under this test's
+heavy churn of overlapping `ref.invalidate` calls) — fixed by checking `ref.mounted` after
+each `await` before touching `state` or reading another provider again, per Riverpod's own
+guidance. The first false-positive-conflict bug found (a *timestamp*, not a lifecycle,
+issue) is the truncation-tolerance fix described above — without it, the very first offline
+edit's flush spuriously reported a conflict against itself.
+
+Flush is triggered from `VaultNotifier._load()` — i.e. on every credentials-list
+load/pull-to-refresh — rather than a dedicated connectivity listener; this covers both of
+the sprint's tested paths (cold start, pull-to-refresh after reconnecting) without adding a
+new platform dependency just to detect reconnection.
+
 **MOB-SYNC-02: Queued offline mutations** (requirements §6.3)
 - As a user, changes I make while offline are saved locally and sent once I'm back
   online.

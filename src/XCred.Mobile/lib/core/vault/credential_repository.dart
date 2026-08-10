@@ -13,6 +13,15 @@ class VaultFetchResult<T> {
   const VaultFetchResult({required this.items, required this.servedFromCache});
 }
 
+/// MOB-SYNC-02 — whether [CredentialRepository.update] reached the server immediately
+/// or had to be queued for later (no connectivity right now).
+enum CredentialWriteOutcome { synced, queuedOffline }
+
+class CredentialWriteResult {
+  final CredentialWriteOutcome outcome;
+  const CredentialWriteResult(this.outcome);
+}
+
 /// Owns "read (cache-first when offline), write (network), decrypt (elsewhere, in
 /// memory)" for credentials — architecture.md §2's Repository layer. Decryption
 /// deliberately isn't here: it needs the session's private key, which this class has no
@@ -56,6 +65,36 @@ class CredentialRepository {
         if (item.id == id) return item;
       }
       return null;
+    }
+  }
+
+  /// MOB-SYNC-02 — edits an existing credential. On a genuine network failure, the edit
+  /// is queued as a [PendingMutation] and applied optimistically to the local read
+  /// cache instead of surfacing an error, matching "changes I make while offline are
+  /// saved locally and sent once I'm back online" (requirements §6.3). A real server
+  /// rejection (validation, auth) still propagates — only `NETWORK_ERROR` is queued.
+  ///
+  /// [baseUpdatedAt] must be the credential's `updatedAt` as last fetched from the
+  /// server (i.e. what the edit was actually based on) — the flush path
+  /// (core/providers/sync_providers.dart) compares it against the server's current
+  /// value to detect "someone else changed this while I was offline."
+  Future<CredentialWriteResult> update(
+    String id,
+    Map<String, dynamic> body,
+    DateTime baseUpdatedAt,
+  ) async {
+    try {
+      await _api.put<Map<String, dynamic>>(
+        '/api/credentials/$id',
+        (json) => json as Map<String, dynamic>,
+        data: body,
+      );
+      return const CredentialWriteResult(CredentialWriteOutcome.synced);
+    } on ApiException catch (e) {
+      if (e.code != 'NETWORK_ERROR') rethrow;
+      await _db.queuePendingMutation(entityId: id, payload: body, baseUpdatedAt: baseUpdatedAt);
+      await _db.applyOptimisticCredentialUpdate(id, body, DateTime.now());
+      return const CredentialWriteResult(CredentialWriteOutcome.queuedOffline);
     }
   }
 

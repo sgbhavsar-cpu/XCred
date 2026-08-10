@@ -68,13 +68,40 @@ class CachedCredentialGroupsTable extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [ServerConfigTable, CachedCredentialsTable, CachedCredentialGroupsTable])
+/// Sprint 1.7 (MOB-SYNC-02) offline write queue — high-level-design.md §2's local data
+/// model. Scoped to credential *updates* only (the sprint's tested path); offline
+/// create/delete would need client-generated temp-ID reconciliation, a distinct chunk of
+/// work not covered by this sprint's acceptance criteria.
+///
+/// [baseUpdatedAt] is the credential's server `updatedAt` at the moment the edit was
+/// made — flush-time conflict detection (requirements §6.3) compares this against the
+/// server's *current* `updatedAt` to tell "safe to replay" apart from "changed elsewhere
+/// since," since the backend has no ETag/row-version field to detect that directly.
+class PendingMutationsTable extends Table {
+  @override
+  String get tableName => 'pending_mutations';
+
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get entityType => text().withDefault(const Constant('credential'))();
+  TextColumn get entityId => text()();
+  TextColumn get operation => text().withDefault(const Constant('update'))();
+  TextColumn get payloadJson => text()();
+  DateTimeColumn get baseUpdatedAt => dateTime()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+@DriftDatabase(tables: [
+  ServerConfigTable,
+  CachedCredentialsTable,
+  CachedCredentialGroupsTable,
+  PendingMutationsTable,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -83,6 +110,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.createTable(cachedCredentialsTable);
             await m.createTable(cachedCredentialGroupsTable);
+          }
+          if (from < 3) {
+            await m.createTable(pendingMutationsTable);
           }
         },
       );
@@ -146,6 +176,54 @@ class AppDatabase extends _$AppDatabase {
         );
       });
     });
+  }
+
+  Future<List<PendingMutationsTableData>> getPendingMutations() {
+    return (select(pendingMutationsTable)
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
+  }
+
+  Future<void> queuePendingMutation({
+    required String entityId,
+    required Map<String, dynamic> payload,
+    required DateTime baseUpdatedAt,
+  }) {
+    return into(pendingMutationsTable).insert(PendingMutationsTableCompanion.insert(
+      entityId: entityId,
+      payloadJson: jsonEncode(payload),
+      baseUpdatedAt: baseUpdatedAt,
+    ));
+  }
+
+  Future<void> deletePendingMutation(int id) {
+    return (delete(pendingMutationsTable)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Reflects a queued-offline edit in the read cache immediately, so the detail/edit
+  /// screens (which fall back to this cache on the very next GET, still offline) show
+  /// the just-made change rather than stale pre-edit data. `folderName`/
+  /// `credentialGroupName`/`tagsJson` are deliberately left untouched — this is a
+  /// best-effort local reflection, not a full re-derivation, and the next successful
+  /// online fetch (including the one that follows a flush) replaces the row wholesale
+  /// anyway.
+  Future<void> applyOptimisticCredentialUpdate(
+    String id,
+    Map<String, dynamic> body,
+    DateTime updatedAt,
+  ) {
+    return (update(cachedCredentialsTable)..where((t) => t.id.equals(id))).write(
+      CachedCredentialsTableCompanion(
+        encryptedData: Value(body['encryptedData'] as String),
+        dataIv: Value(body['dataIv'] as String),
+        encryptedCredentialKey: Value(body['encryptedCredentialKey'] as String),
+        expiryDate: Value(
+            body['expiryDate'] == null ? null : DateTime.parse(body['expiryDate'] as String)),
+        folderId: Value(body['folderId'] as String?),
+        credentialGroupId: Value(body['credentialGroupId'] as String?),
+        updatedAt: Value(updatedAt),
+      ),
+    );
   }
 
   CredentialListItem _credentialFromRow(CachedCredentialsTableData r) => CredentialListItem(

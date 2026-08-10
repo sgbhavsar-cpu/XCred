@@ -9,6 +9,7 @@ import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
+import '../../core/vault/credential_repository.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
 import 'widgets/password_generator_sheet.dart';
@@ -69,6 +70,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
   String? _credentialGroupId;
   final Set<String> _selectedTagIds = {};
   DateTime? _expiryDate;
+  DateTime? _baseUpdatedAt;
   bool _loading;
   bool _saving = false;
   String? _error;
@@ -183,6 +185,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
         _notesController.text = (decrypted['notes'] as String?) ?? '';
         _folderId = cred.folderId;
         _credentialGroupId = cred.credentialGroupId;
+        _baseUpdatedAt = cred.updatedAt;
         _selectedTagIds
           ..clear()
           ..addAll(cred.tags.map((t) => t.id));
@@ -277,14 +280,20 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
         'tagIds': _selectedTagIds.toList(),
       };
 
-      final api = ref.read(apiClientProvider);
+      bool queuedOffline = false;
       if (widget.isEdit) {
-        await api.put<Map<String, dynamic>>(
-          '/api/credentials/${widget.credentialId}',
-          (json) => json as Map<String, dynamic>,
-          data: body,
-        );
+        // MOB-SYNC-02 — routed through the repository (not a direct PUT) so a network
+        // failure queues the edit for later instead of surfacing an error; create stays
+        // a direct online-only call (see credential_repository.dart's `update` doc for
+        // why offline create isn't supported this sprint).
+        final result = await ref.read(credentialRepositoryProvider).update(
+              widget.credentialId!,
+              body,
+              _baseUpdatedAt ?? DateTime.now(),
+            );
+        queuedOffline = result.outcome == CredentialWriteOutcome.queuedOffline;
       } else {
+        final api = ref.read(apiClientProvider);
         await api.post<Map<String, dynamic>>(
           '/api/credentials',
           (json) => json as Map<String, dynamic>,
@@ -294,7 +303,14 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
 
       ref.invalidate(vaultProvider);
       ref.invalidate(credentialGroupsProvider);
-      if (mounted) context.pop(true);
+      if (mounted) {
+        if (queuedOffline) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Offline — your edit will sync once you're back online."),
+          ));
+        }
+        context.pop(true);
+      }
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {

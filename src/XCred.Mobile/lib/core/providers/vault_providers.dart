@@ -9,6 +9,7 @@ import '../vault/credential_type_meta.dart';
 import '../vault/folder_repository.dart';
 import '../vault/tag_repository.dart';
 import 'core_providers.dart';
+import 'sync_providers.dart';
 
 final credentialRepositoryProvider = Provider<CredentialRepository>((ref) {
   return CredentialRepository(ref.watch(apiClientProvider), ref.watch(databaseProvider));
@@ -94,6 +95,15 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
   }
 
   Future<VaultState> _load() async {
+    // MOB-SYNC-02 — replay any offline-queued edits before fetching, so a load right
+    // after reconnecting (cold start or pull-to-refresh) both flushes and shows the
+    // resulting server state in one action.
+    await ref.read(syncProvider.notifier).flush();
+    // A logout/dispose (or, in tests, a torn-down ProviderScope) can land while flush()
+    // is still awaiting its network round-trip — reading through a disposed ref throws,
+    // and since nothing is left to observe this build's result anyway, bail instead.
+    if (!ref.mounted) return const VaultState(credentials: [], decrypted: {}, offline: false);
+
     final result = await ref.read(credentialRepositoryProvider).getAll();
     if (!result.servedFromCache) _lastSyncedAt = DateTime.now();
 

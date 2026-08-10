@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/models/credential_models.dart';
+import '../../core/providers/sync_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
@@ -144,6 +145,7 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
   Widget build(BuildContext context) {
     final vaultAsync = ref.watch(vaultProvider);
     final groupsAsync = ref.watch(credentialGroupsProvider);
+    final syncState = ref.watch(syncProvider);
     final activeFilter = _search.isNotEmpty || _typeFilter != null;
 
     return Scaffold(
@@ -191,6 +193,7 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
             ),
           ),
           if (vaultAsync.value?.offline == true) const _OfflineBanner(),
+          if (syncState.conflicts.isNotEmpty) _SyncConflictBanner(conflicts: syncState.conflicts),
           Expanded(
             child: (vaultAsync.isLoading && !vaultAsync.hasValue) || groupsAsync.isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -354,6 +357,64 @@ class _OfflineBanner extends StatelessWidget {
           fontSize: 12,
           color: Theme.of(context).colorScheme.onErrorContainer,
         ),
+      ),
+    );
+  }
+}
+
+/// MOB-SYNC-02 — surfaces flush failures caused by the server's copy changing while a
+/// mutation was queued offline (requirements §6.3's "visible warning"). Each conflict
+/// stays queued (not auto-applied, not silently dropped) until the user explicitly
+/// discards their local edit here.
+class _SyncConflictBanner extends ConsumerWidget {
+  const _SyncConflictBanner({required this.conflicts});
+  final List<PendingMutationConflict> conflicts;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      color: Theme.of(context).colorScheme.errorContainer,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  size: 18, color: Theme.of(context).colorScheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Sync conflict: changed elsewhere while you were offline. '
+                  'Your local edit was not applied.',
+                  style:
+                      TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+          for (final c in conflicts)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 26),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(c.entityLabel,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onErrorContainer)),
+                  ),
+                  TextButton(
+                    onPressed: () => ref.read(syncProvider.notifier).discardConflict(c.mutationId),
+                    child: const Text('Discard my change'),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
