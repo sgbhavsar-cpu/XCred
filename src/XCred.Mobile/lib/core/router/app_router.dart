@@ -12,6 +12,7 @@ import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/folders/folders_screen.dart';
 import '../../features/session/unlock_screen.dart';
 import '../../features/setup/server_setup_screen.dart';
+import '../../features/shares/shares_screen.dart';
 import '../../features/tags/tags_screen.dart';
 import '../providers/core_providers.dart';
 
@@ -90,6 +91,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/folders', builder: (context, state) => const FoldersScreen()),
       GoRoute(path: '/tags', builder: (context, state) => const TagsScreen()),
+      GoRoute(path: '/shares', builder: (context, state) => const SharesScreen()),
     ],
   );
 });

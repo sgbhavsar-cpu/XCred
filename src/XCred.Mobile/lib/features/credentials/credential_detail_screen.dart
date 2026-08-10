@@ -8,7 +8,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/models/credential_models.dart';
+import '../../core/models/share_models.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/share_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
@@ -238,6 +240,143 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
     }
   }
 
+  /// MOB-SHARE-02 — re-wraps the credential's AES key under the recipient's RSA public
+  /// key (crypto.ts `encryptKeyWithPublicKey`'s Dart twin) and sends it alongside the
+  /// *unchanged* `encryptedData`/`dataIv` — the ciphertext body never needs to differ
+  /// per recipient, only its key wrapping does. Mirrors the web app's `handleShare`
+  /// exactly, including the user-only picker (no team picker — the web UI never sends
+  /// `sharedWithGroupId` even though the backend supports it).
+  Future<void> _openShareSheet() async {
+    final cred = _cred;
+    final session = ref.read(authSessionProvider);
+    if (cred == null || session == null) return;
+
+    List<UserSummary> users;
+    try {
+      users = await ref.read(usersRepositoryProvider).getAll();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to load users.')));
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (users.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('No other users to share with.')));
+      return;
+    }
+
+    String? selectedUserId;
+    DateTime? expiryDate;
+    bool untilChanged = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Share Credential'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedUserId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Share with'),
+                  items: [
+                    for (final u in users)
+                      DropdownMenuItem(
+                        value: u.id,
+                        child: Text('${u.username} (${u.email})',
+                            overflow: TextOverflow.ellipsis, maxLines: 1),
+                      ),
+                  ],
+                  onChanged: (v) => setDialogState(() => selectedUserId = v),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now().add(const Duration(days: 1)),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) setDialogState(() => expiryDate = picked);
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Access Expires (optional)'),
+                    child: Text(expiryDate == null ? 'Never' : _formatDate(expiryDate!)),
+                  ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: untilChanged,
+                  title: const Text('Revoke automatically if this credential is updated'),
+                  onChanged: (v) => setDialogState(() => untilChanged = v ?? false),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    "The credential key will be re-encrypted with the recipient's public "
+                    'key — they can decrypt it without the server ever seeing the '
+                    'plaintext.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: selectedUserId == null ? null : () => Navigator.of(context).pop(true),
+              child: const Text('Share'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || selectedUserId == null) return;
+
+    try {
+      final crypto = ref.read(cryptoServiceProvider);
+      final credentialKey =
+          crypto.decryptKeyWithPrivateKey(session.privateKey, cred.encryptedCredentialKey);
+      final recipient = users.firstWhere((u) => u.id == selectedUserId);
+      final wrappedKey = await crypto.encryptKeyWithPublicKey(recipient.publicKey, credentialKey);
+
+      await ref.read(sharesRepositoryProvider).create(
+            credentialId: cred.id,
+            sharedWithUserId: recipient.id,
+            encryptedData: cred.encryptedData,
+            dataIv: cred.dataIv,
+            encryptedCredentialKey: wrappedKey,
+            expiresAt: expiryDate,
+            untilChanged: untilChanged,
+          );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Shared with ${recipient.username}.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Failed to share credential.')));
+      }
+    }
+  }
+
   Future<void> _copy(String value, String key) async {
     await Clipboard.setData(ClipboardData(text: value));
     unawaited(ref
@@ -269,7 +408,7 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
       appBar: AppBar(
         title: Text(_loading ? '' : (cred != null ? _name : 'Credential')),
         actions: [
-          if (cred != null)
+          if (cred != null) ...[
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               tooltip: 'Edit',
@@ -279,6 +418,12 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
                 if (saved == true) _load();
               },
             ),
+            IconButton(
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Share',
+              onPressed: _openShareSheet,
+            ),
+          ],
         ],
       ),
       body: _loading

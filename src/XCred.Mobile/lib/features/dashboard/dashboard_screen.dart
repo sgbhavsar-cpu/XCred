@@ -110,6 +110,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _StatCard(
                           label: 'Shared With Me',
                           value: '${_dashboard!['sharedWithMe']}',
+                          onTap: () => context.push('/shares'),
                         ),
                         const SizedBox(width: 12),
                         _StatCard(label: 'Teams', value: '${_dashboard!['groupCount']}'),

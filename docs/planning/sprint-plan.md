@@ -463,6 +463,43 @@ new platform dependency just to detect reconnection.
 
 ### Sprint 2.1 — Sharing
 
+**Status: Done (2026-08-10).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/sharing_test.dart`, the first mobile
+test needing a second real account: registered a throwaway recipient through the real
+register screen, approved them via a raw admin API call (no UI path for self-approval —
+`GET /api/users` only surfaces active *and* approved accounts), then, entirely through
+app UI, shared a credential from the owner account, logged out and back in as the
+recipient to confirm the shared credential actually decrypts (proving the AES data-key
+was correctly re-wrapped under the recipient's own public key, not just that the right
+HTTP calls were made), logged back in as the owner to revoke it via the "Shared By Me"
+tab's confirmation dialog, then logged back in as the recipient a final time to confirm
+it no longer appears in "Shared With Me."
+
+Reused `CryptoService.encryptKeyWithPublicKey` unchanged — it was already written
+generically (unwrap under my key, re-wrap under an arbitrary recipient's key) back when
+`encryptCredentialFields` was built, anticipating this sprint. Scoped to user-only
+sharing, matching the web app's own current behavior: the backend DTOs and this sprint's
+`SharedCredentialSummary` model both carry `sharedWithGroupId`/`sharedWithGroupName`
+fields (team sharing is a real, unused backend capability), but the web UI's share modal
+never sends it either, so mobile doesn't add a team picker here.
+
+Two real bugs found and fixed while getting the test to pass:
+- A "Shared By Me" list entry's `encryptedCredentialKey` is wrapped under the
+  *recipient's* public key (that's the whole point of it), not the owner's — decrypting
+  an owner's own share-history entries to show a name needs their own separately-fetched
+  owned copy of the same credential (same `encryptedData`/`dataIv`, correctly self-wrapped
+  key), not the share row's own key field, which is undecryptable to them by design.
+- `sharedWithMeProvider`/`sharedByMeProvider` weren't tied to session lifecycle, so
+  revisiting `/shares` after a revoke — or simply after a different account had logged in
+  since the screen was last open — could still show a stale cached list. Fixed by
+  refreshing both on every screen entry (`SharesScreen.initState`), not just via
+  pull-to-refresh.
+
+A pre-existing UI robustness gap, unrelated to this sprint's own code, also surfaced and
+was fixed: the share dialog's recipient dropdown had no overflow handling, so a
+long username/email pair overflowed the row (`isExpanded: true` + ellipsis on the item
+text, standard Flutter fix for this class of dropdown).
+
 **MOB-SHARE-01: Shared With Me / Shared By Me** (FR-SHARE-01/02)
 **MOB-SHARE-02: Share flow (create + revoke)** (FR-SHARE-03)
 - As a user, I share a credential with another user or team, and see/manage what's
