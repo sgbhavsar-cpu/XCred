@@ -14,6 +14,8 @@ import '../../features/session/unlock_screen.dart';
 import '../../features/setup/server_setup_screen.dart';
 import '../../features/shares/shares_screen.dart';
 import '../../features/tags/tags_screen.dart';
+import '../../features/teams/team_detail_screen.dart';
+import '../../features/teams/teams_screen.dart';
 import '../providers/core_providers.dart';
 
 /// Bridges Riverpod state into go_router's imperative `refreshListenable` — Sprint 0.1's
@@ -92,6 +94,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/folders', builder: (context, state) => const FoldersScreen()),
       GoRoute(path: '/tags', builder: (context, state) => const TagsScreen()),
       GoRoute(path: '/shares', builder: (context, state) => const SharesScreen()),
+      GoRoute(path: '/teams', builder: (context, state) => const TeamsScreen()),
+      GoRoute(
+        path: '/teams/:id',
+        builder: (context, state) =>
+            TeamDetailScreen(teamId: state.pathParameters['id']!),
+      ),
     ],
   );
 });

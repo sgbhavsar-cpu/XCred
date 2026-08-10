@@ -113,7 +113,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           onTap: () => context.push('/shares'),
                         ),
                         const SizedBox(width: 12),
-                        _StatCard(label: 'Teams', value: '${_dashboard!['groupCount']}'),
+                        _StatCard(
+                          label: 'Teams',
+                          value: '${_dashboard!['groupCount']}',
+                          onTap: () => context.push('/teams'),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),

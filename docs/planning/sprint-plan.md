@@ -513,6 +513,33 @@ text, standard Flutter fix for this class of dropdown).
 
 ### Sprint 2.2 — Teams
 
+**Status: Done (2026-08-10).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/teams_test.dart`, built specifically
+as a regression guard for the sprint's named scenario: a throwaway *non-admin* account
+registers, gets approved via a raw admin API call (no UI path for self-approval),
+creates a team through the real UI (auto-becoming that team's own Admin — a purely
+per-team flag, unrelated to the global user role), and successfully adds `xcred_admin`
+as a member — proving a non-global-admin team admin can add a member, the exact
+permission a web-app bug this session silently broke (root-caused during research: the
+web picker called the admin-gated `/admin/users` endpoint and silently swallowed the
+403; `GroupsController.AddMember`'s own authorization — per-team Admin OR global Admin —
+was always correct). Mobile's `UsersRepository` already called the correct
+non-admin-gated `/api/users` endpoint from Sprint 2.1, so this sprint's job was mainly to
+confirm the UI built on it correctly, not to fix a parallel bug.
+
+One real bug found and fixed: `TeamsRepository.addMember` cast the response as
+`Map<String, dynamic>`, but `GroupsController.AddMember` returns `ApiResponse<string>`
+(`"Member added."`) — a plain string, not an object — throwing a cast error on every
+successful add. A single Add Member tap always looked like a failure until fixed.
+
+Delete-team is gated on the caller's *global* Admin role, not their per-team Admin flag,
+deliberately diverging from the web app: `GroupsController.Delete` is
+`[Authorize(Roles = Roles.Admin)]` (global-admin-only) unlike every other endpoint on
+that controller, and the web UI shows its delete button to per-team admins regardless —
+meaning a per-team-admin-but-not-global-admin web user sees a delete action that 403s.
+Mobile shows the action only when it will actually succeed. Remove-member allows
+self-removal ("leave team") for any member regardless of role, matching the backend.
+
 **MOB-TEAM-01: Team list/detail/create/add-remove member/delete** (FR-TEAM-01)
 - Acceptance criteria: uses `GET /users` for the member picker (the exact endpoint fix
   applied to web this session — mobile never had the bug to begin with, this just
