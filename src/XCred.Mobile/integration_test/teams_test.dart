@@ -156,8 +156,11 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 5));
 
     // The picker renders "username (email)" — admin's real email isn't known to this
-    // test, so match by username prefix rather than a guessed full string.
-    await tester.tap(find.textContaining('$adminUsername (').first);
+    // test, so match by username prefix rather than a guessed full string. This
+    // session has accumulated dozens of throwaway users across every earlier sprint's
+    // tests, so the target option can be scrolled well past the dialog's initially
+    // visible area — ensureVisible (via _tapVisible) before tapping, not a bare tap.
+    await _tapVisible(tester, find.textContaining('$adminUsername (').first);
     // Poll (not a single pumpAndSettle, which can fast-forward straight through a
     // failure SnackBar's whole show/hide cycle and leave nothing to find — same bug
     // class fixed elsewhere this session) for either outcome, so a real failure is

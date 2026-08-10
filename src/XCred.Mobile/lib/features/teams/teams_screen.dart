@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/team_models.dart';
 import '../../core/providers/team_providers.dart';
+import '../../core/widgets/empty_state.dart';
 
 /// MOB-TEAM-01 — list of teams the caller is a member of (there is no "browse all
 /// teams", even for a global Admin — GroupsController.cs's `GetAll` scopes strictly by
@@ -80,34 +82,25 @@ class _TeamsScreenState extends ConsumerState<TeamsScreen> {
         onRefresh: () => ref.read(teamsProvider.notifier).refresh(),
         child: async.when(
           data: (teams) => teams.isEmpty
-              ? _emptyState("You're not on any teams yet.")
+              ? const EmptyState(
+                  icon: Icons.groups_outlined,
+                  message: "You're not on any teams yet.",
+                )
               : ListView.builder(
                   itemCount: teams.length,
                   itemBuilder: (context, i) => _TeamCard(team: teams[i]),
                 ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Failed to load: $e')),
+          error: (e, _) => EmptyState(
+            icon: Icons.error_outline,
+            message: friendlyErrorMessage(e),
+            actionLabel: 'Retry',
+            onAction: () => ref.read(teamsProvider.notifier).refresh(),
+          ),
         ),
       ),
     );
   }
-}
-
-Widget _emptyState(String message) {
-  return LayoutBuilder(
-    builder: (context, constraints) => SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: constraints.maxHeight),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Text(message, textAlign: TextAlign.center),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 class _TeamCard extends StatelessWidget {

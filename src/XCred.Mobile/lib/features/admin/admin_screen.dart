@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/admin_models.dart';
 import '../../core/providers/admin_providers.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/widgets/empty_state.dart';
 
 /// MOB-ADMIN-01/02/03 — Users (role change, activate/deactivate), Pending approval,
 /// and Audit Log with real filters/pagination. The whole backend controller is
@@ -29,23 +31,6 @@ class AdminScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-Widget _emptyState(String message) {
-  return LayoutBuilder(
-    builder: (context, constraints) => SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: constraints.maxHeight),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Text(message, textAlign: TextAlign.center),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 String _formatDate(DateTime d) =>
@@ -167,9 +152,14 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
       onRefresh: () => ref.read(adminUsersProvider.notifier).refresh(),
       child: usersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load users: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(adminUsersProvider.notifier).refresh(),
+        ),
         data: (users) => users.isEmpty
-                  ? _emptyState('No users found.')
+                  ? const EmptyState(icon: Icons.people_outline, message: 'No users found.')
                   : ListView.builder(
                       itemCount: users.length,
                       itemBuilder: (context, i) {
@@ -276,10 +266,18 @@ class _PendingTabState extends ConsumerState<_PendingTab> {
       onRefresh: () => ref.read(adminUsersProvider.notifier).refresh(),
       child: usersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load pending approvals: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(adminUsersProvider.notifier).refresh(),
+        ),
         data: (users) {
           final pending = users.where((u) => !u.isApproved).toList();
-          if (pending.isEmpty) return _emptyState('No pending approvals.');
+          if (pending.isEmpty) {
+            return const EmptyState(
+                icon: Icons.check_circle_outline, message: 'No pending approvals.');
+          }
           return ListView.builder(
             itemCount: pending.length,
             itemBuilder: (context, i) {
@@ -315,7 +313,7 @@ class _AuditLogTab extends ConsumerStatefulWidget {
 class _AuditLogTabState extends ConsumerState<_AuditLogTab> {
   PagedAuditLog? _result;
   bool _loading = true;
-  String? _error;
+  Object? _error;
   int _page = 1;
   String? _actionFilter;
   String? _userIdFilter;
@@ -343,7 +341,7 @@ class _AuditLogTabState extends ConsumerState<_AuditLogTab> {
           );
       if (mounted) setState(() => _result = result);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Failed to load audit log.');
+      if (mounted) setState(() => _error = e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -491,9 +489,17 @@ class _AuditLogTabState extends ConsumerState<_AuditLogTab> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? Center(child: Text(_error!))
+                  ? EmptyState(
+                      icon: Icons.error_outline,
+                      message: friendlyErrorMessage(_error!),
+                      actionLabel: 'Retry',
+                      onAction: _load,
+                    )
                   : (result == null || result.items.isEmpty)
-                      ? _emptyState('No matching audit log entries.')
+                      ? const EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          message: 'No matching audit log entries.',
+                        )
                       : RefreshIndicator(
                           onRefresh: _load,
                           child: ListView.builder(
@@ -527,12 +533,14 @@ class _AuditLogTabState extends ConsumerState<_AuditLogTab> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Previous page',
                   onPressed: _page > 1 ? _prevPage : null,
                 ),
                 Text('Page $_page of ${result.totalPages == 0 ? 1 : result.totalPages} '
                     '(${result.total} total)'),
                 IconButton(
                   icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Next page',
                   onPressed: _page < result.totalPages ? _nextPage : null,
                 ),
               ],

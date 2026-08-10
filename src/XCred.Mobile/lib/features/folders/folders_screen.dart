@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/credential_models.dart';
 import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/widgets/empty_state.dart';
 import '../credentials/widgets/credential_row.dart';
 
 /// MOB-FOLD-01 — nested folder tree, create/rename/delete, member credentials shown via
@@ -163,7 +165,12 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
       ),
       body: foldersAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load folders: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(folderTreeProvider.notifier).refresh(),
+        ),
         data: (tree) {
           final vault = vaultAsync.value;
           if (vault == null) return const Center(child: CircularProgressIndicator());
@@ -174,19 +181,11 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
           }
 
           if (tree.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.folder_outlined, size: 40),
-                    const SizedBox(height: 12),
-                    const Text('No folders yet.'),
-                    TextButton(onPressed: _createFolder, child: const Text('Create your first folder')),
-                  ],
-                ),
-              ),
+            return EmptyState(
+              icon: Icons.folder_outlined,
+              message: 'No folders yet.',
+              actionLabel: 'Create your first folder',
+              onAction: _createFolder,
             );
           }
 

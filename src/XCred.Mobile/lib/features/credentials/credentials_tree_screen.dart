@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/credential_models.dart';
 import '../../core/providers/sync_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
+import '../../core/widgets/empty_state.dart';
 import 'widgets/credential_row.dart';
 
 /// MOB-CRED-01 — expandable tree of Credential Groups + an ungrouped section, search,
@@ -198,7 +200,12 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
             child: (vaultAsync.isLoading && !vaultAsync.hasValue) || groupsAsync.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : vaultAsync.hasError
-                    ? Center(child: Text('Failed to load credentials: ${vaultAsync.error}'))
+                    ? EmptyState(
+                        icon: Icons.error_outline,
+                        message: friendlyErrorMessage(vaultAsync.error!),
+                        actionLabel: 'Retry',
+                        onAction: _refresh,
+                      )
                     : RefreshIndicator(
                         onRefresh: _refresh,
                         child: _buildList(
@@ -237,11 +244,14 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
       ..sort((a, b) => a.name.compareTo(b.name));
 
     if (vault.credentials.isEmpty && groups.isEmpty) {
-      return _emptyState('No credentials yet.');
+      return const EmptyState(icon: Icons.key_outlined, message: 'No credentials yet.');
     }
     if (visibleGroups.isEmpty && ungrouped.isEmpty) {
-      return _emptyState(
-          activeFilter ? 'No credentials match your search.' : 'No credentials yet.');
+      return EmptyState(
+        icon: Icons.search_off,
+        message:
+            activeFilter ? 'No credentials match your search.' : 'No credentials yet.',
+      );
     }
 
     return ListView(
@@ -324,22 +334,6 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     ];
   }
 
-  Widget _emptyState(String message) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text(message, textAlign: TextAlign.center),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _OfflineBanner extends StatelessWidget {

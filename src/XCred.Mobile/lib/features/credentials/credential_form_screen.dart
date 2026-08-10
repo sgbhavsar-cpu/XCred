@@ -433,6 +433,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
               IconButton(
                 icon: Icon(isHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                     size: 18),
+                tooltip: isHidden ? 'Show password' : 'Hide password',
                 onPressed: () => setState(() => _hiddenPassword[field.key] = !isHidden),
               ),
               IconButton(
@@ -445,7 +446,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
               IconButton(
                 icon: const Icon(Icons.open_in_new, size: 18),
                 tooltip: linkHref != null ? linkTooltip(field) : 'Enter a value first',
-                onPressed: linkHref == null ? null : () => openSmartLink(linkHref),
+                onPressed: linkHref == null ? null : () => openSmartLink(context, linkHref),
               ),
           ],
         ),
@@ -480,6 +481,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
                 IconButton(
                   key: ValueKey('list_${field.key}_delete_$i'),
                   icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: 'Remove',
                   onPressed: () => setState(() {
                     controllers[i].dispose();
                     controllers.removeAt(i);
@@ -550,6 +552,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
                         icon: Icon(
                             cf.hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                             size: 16),
+                        tooltip: cf.hidden ? 'Show value' : 'Hide value',
                         onPressed: () => setState(() => cf.hidden = !cf.hidden),
                       )
                     : null,
@@ -568,6 +571,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 18),
+            tooltip: 'Remove field',
             onPressed: () => setState(() {
               cf.dispose();
               _customFields.removeAt(index);

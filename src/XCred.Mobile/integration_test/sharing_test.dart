@@ -176,7 +176,33 @@ void main() {
     // yet, unlike the folder/tag pickers elsewhere), so open it by widget type instead.
     await _tapVisible(tester, find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('$recipientUsername ($recipientEmail)').last);
+    // This session has accumulated dozens of throwaway users across every earlier
+    // sprint's tests — the dropdown's own popup menu is a Sliver-backed
+    // ListView(children:) (same lazy-build class documented in
+    // credential_form_screen.dart and admin_test.dart's Users tab), so the newest
+    // (target) recipient can be scrolled well past what's initially built.
+    // scrollUntilVisible's automatic `find.byType(Scrollable).last` resolution is
+    // ambiguous/unstable here (the popup route sits alongside the dialog's own
+    // scrollable) — drag the popup's ListView directly instead, which is the only
+    // ListView present while the menu is open.
+    //
+    // Deliberately NOT `.last` here: the `.last`/`.first` finder combinators throw
+    // (not return empty) when zero candidates match — fine once existence is
+    // confirmed, wrong for a "does it exist yet" polling condition.
+    final recipientItemBaseFinder = find.text('$recipientUsername ($recipientEmail)');
+    // Two ListViews are on screen while the menu is open (the dialog's own content
+    // area is a ListView too) — the popup menu's is the shrink-wrapped one, added
+    // most recently, so `.last`.
+    final dropdownListFinder = find.byType(ListView).last;
+    for (var i = 0; i < 15 && recipientItemBaseFinder.evaluate().isEmpty; i++) {
+      await tester.drag(dropdownListFinder, const Offset(0, -300));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(recipientItemBaseFinder, findsWidgets,
+        reason: 'The recipient must be reachable in the share-with dropdown after '
+            'scrolling');
+    await tester.tap(recipientItemBaseFinder.last);
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.widgetWithText(FilledButton, 'Share'));
     // Poll with short pumps (not a single long pumpAndSettle) — the confirmation

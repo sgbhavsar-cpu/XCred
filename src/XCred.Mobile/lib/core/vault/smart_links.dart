@@ -1,6 +1,7 @@
 // Ported from src/XCred.Web/src/lib/links.ts — see that file's comment for the researched
 // scheme reliability notes (http(s)/mailto/tel are native; ssh/telnet/rdp are best-effort,
 // only doing anything if the device has a registered handler app).
+import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'credential_fields.dart';
@@ -74,9 +75,24 @@ String? computeFieldLink(FieldDef field, String value, Map<String, String> allVa
   }
 }
 
-Future<void> openSmartLink(String href) async {
+/// MOB-LINK-01 — ssh:/rdp: (and, rarely, telnet:) links only do anything if the device
+/// has a registered handler app; `launchUrl` returns `false` or throws depending on
+/// platform/circumstance when none exists. Either way this must never be silent — the
+/// user needs to know the tap did something, even if that something is "nothing is
+/// installed that can open this."
+Future<void> openSmartLink(BuildContext context, String href) async {
   final uri = Uri.parse(href);
-  await launchUrl(uri, mode: LaunchMode.externalApplication);
+  bool launched = false;
+  try {
+    launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    launched = false;
+  }
+  if (!launched && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No app installed that can open this link.')),
+    );
+  }
 }
 
 String linkTooltip(FieldDef field) {

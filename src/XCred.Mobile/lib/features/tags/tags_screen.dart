@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/credential_models.dart';
 import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/widgets/empty_state.dart';
 import '../credentials/widgets/credential_row.dart';
 
 const _kPresetColors = [
@@ -161,7 +163,12 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
       ),
       body: tagsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load tags: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(tagListProvider.notifier).refresh(),
+        ),
         data: (tags) {
           final vault = vaultAsync.value;
           if (vault == null) return const Center(child: CircularProgressIndicator());
@@ -174,19 +181,11 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
           }
 
           if (tags.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.label_outline, size: 40),
-                    const SizedBox(height: 12),
-                    const Text('No tags yet.'),
-                    TextButton(onPressed: _createTag, child: const Text('Create your first tag')),
-                  ],
-                ),
-              ),
+            return EmptyState(
+              icon: Icons.label_outline,
+              message: 'No tags yet.',
+              actionLabel: 'Create your first tag',
+              onAction: _createTag,
             );
           }
 

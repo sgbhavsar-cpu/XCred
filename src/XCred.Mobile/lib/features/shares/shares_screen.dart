@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api/error_messages.dart';
 import '../../core/models/share_models.dart';
 import '../../core/providers/share_providers.dart';
 import '../../core/vault/credential_type_meta.dart';
+import '../../core/widgets/empty_state.dart';
 
 /// MOB-SHARE-01 — "Shared With Me" / "Shared By Me", mirroring the web app's
 /// `SharesPage` two-tab layout. Revoke lives only on "Shared By Me" — only the
@@ -45,23 +47,6 @@ class _SharesScreenState extends ConsumerState<SharesScreen> {
   }
 }
 
-Widget _emptyState(String message) {
-  return LayoutBuilder(
-    builder: (context, constraints) => SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: constraints.maxHeight),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Text(message, textAlign: TextAlign.center),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
 String _formatDate(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -75,13 +60,21 @@ class _SharedWithMeTab extends ConsumerWidget {
       onRefresh: () => ref.read(sharedWithMeProvider.notifier).refresh(),
       child: async.when(
         data: (items) => items.isEmpty
-            ? _emptyState('Nothing has been shared with you yet.')
+            ? const EmptyState(
+                icon: Icons.inbox_outlined,
+                message: 'Nothing has been shared with you yet.',
+              )
             : ListView.builder(
                 itemCount: items.length,
                 itemBuilder: (context, i) => _SharedWithMeCard(item: items[i]),
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(sharedWithMeProvider.notifier).refresh(),
+        ),
       ),
     );
   }
@@ -131,7 +124,10 @@ class _SharedByMeTab extends ConsumerWidget {
           final active = items.where((i) => !i.share.isRevoked && !i.share.isExpired).toList();
           final inactive = items.where((i) => i.share.isRevoked || i.share.isExpired).toList();
           if (active.isEmpty && inactive.isEmpty) {
-            return _emptyState("You haven't shared anything yet.");
+            return const EmptyState(
+              icon: Icons.share_outlined,
+              message: "You haven't shared anything yet.",
+            );
           }
           return ListView(
             children: [
@@ -152,7 +148,12 @@ class _SharedByMeTab extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load: $e')),
+        error: (e, _) => EmptyState(
+          icon: Icons.error_outline,
+          message: friendlyErrorMessage(e),
+          actionLabel: 'Retry',
+          onAction: () => ref.read(sharedByMeProvider.notifier).refresh(),
+        ),
       ),
     );
   }

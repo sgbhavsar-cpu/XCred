@@ -646,8 +646,8 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
                         if (itemHref != null)
                           IconButton(
                             icon: const Icon(Icons.open_in_new, size: 16),
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => openSmartLink(itemHref),
+                            tooltip: linkTooltip(field),
+                            onPressed: () => openSmartLink(context, itemHref),
                           ),
                       ],
                     );
@@ -666,16 +666,18 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
             IconButton(
               icon: Icon(isHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                   size: 20),
+              tooltip: isHidden ? 'Show password' : 'Hide password',
               onPressed: () => setState(() => _hidden[field.key] = !isHidden),
             ),
           if (linkHref != null)
             IconButton(
               icon: const Icon(Icons.open_in_new, size: 20),
               tooltip: linkTooltip(field),
-              onPressed: () => openSmartLink(linkHref),
+              onPressed: () => openSmartLink(context, linkHref),
             ),
           IconButton(
             icon: const Icon(Icons.copy_outlined, size: 20),
+            tooltip: 'Copy',
             onPressed: () => _copy(displayValue, field.key),
           ),
         ],
@@ -705,10 +707,12 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
             IconButton(
               icon: Icon(isHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                   size: 20),
+              tooltip: isHidden ? 'Show value' : 'Hide value',
               onPressed: () => setState(() => _hidden[key] = !isHidden),
             ),
           IconButton(
             icon: const Icon(Icons.copy_outlined, size: 20),
+            tooltip: 'Copy',
             onPressed: () => _copy(cf.value, key),
           ),
         ],

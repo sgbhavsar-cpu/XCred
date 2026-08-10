@@ -665,6 +665,59 @@ Admin screen manages state across its three tabs and a long list:
 
 ### Sprint 3.1 — Smart Links, Empty States, Accessibility
 
+**Status: Done (2026-08-10).** Verified with `flutter analyze` (clean, same pre-existing
+info-level notes only), the unit suite (`flutter test`, all green), and a targeted
+integration-test pass on the Pixel_10_Pro emulator against the live Docker dev backend:
+the new `integration_test/smart_links_test.dart` plus every existing suite touching a
+screen this sprint modified (`credentials_read_path_test.dart`,
+`credential_form_test.dart`, `folders_tags_groups_test.dart`, `sharing_test.dart`,
+`teams_test.dart`, `admin_test.dart`) — all pass.
+
+- **MOB-LINK-01.** `openSmartLink` previously had zero failure handling — `launchUrl`
+  returning `false` or throwing for an `ssh:`/`rdp:` link with no registered handler app
+  went unnoticed by the user (no crash, but also no feedback that the tap did anything).
+  Now it always resolves to visible feedback: a "No app installed that can open this
+  link." SnackBar on failure. `smart_links_test.dart` creates a real SshKey credential,
+  taps its Host/Server "Open" action on a fresh emulator with no SSH handler installed,
+  and confirms the fallback SnackBar appears and the app stays intact — the sprint's own
+  test-case wording ("ssh:/rdp: links degrade gracefully when no handler app is
+  installed") proven against a real device rather than assumed from the try/catch alone.
+- **MOB-POLISH-01.** Consolidated four byte-for-byte-identical local `_emptyState()`
+  helpers (`admin_screen.dart`, `shares_screen.dart`, `teams_screen.dart`,
+  `credentials_tree_screen.dart`) plus two more inline-but-diverged icon+text+button
+  versions (`folders_screen.dart`, `tags_screen.dart`) into one shared
+  `core/widgets/empty_state.dart`, matching the mockup's icon+message(+action) pattern.
+  Added `core/api/error_messages.dart`'s `friendlyErrorMessage()`, which distinguishes
+  `ApiException.code == 'NETWORK_ERROR'` ("You're offline...") from any other failure
+  ("Something went wrong..."), and wired every list screen's `AsyncValue.error`/`.when`
+  error branch through it with a "Retry" action wired to that screen's own refresh —
+  previously every one of these screens dumped the raw exception (`'Failed to load X:
+  $e'`) straight into the UI. `credentials_tree_screen.dart` — the one screen that
+  already distinguished offline-vs-error via `VaultState.offline` — keeps that banner
+  layered on top; the `EmptyState`/`friendlyErrorMessage` change here only replaces its
+  hard-error and truly-empty branches, not the offline path.
+- **MOB-A11Y-01.** Found 12 icon-only `IconButton`s with no `tooltip` at all (a swept
+  audit of every `IconButton(` in `lib/` confirms zero remain untouched now) plus one
+  touch-target issue (`VisualDensity.compact` on an interactive network-device link
+  button, removed). `IconButton.tooltip` satisfies Flutter/TalkBack semantics
+  automatically — no extra `Semantics` wrapper needed, confirmed via research before
+  implementing.
+- **Two pre-existing test-infrastructure bugs found and fixed while verifying, unrelated
+  to this sprint's own code changes but blocking a green run:** this session's ~30
+  accumulated throwaway user accounts (from every earlier sprint's tests run against the
+  same long-lived dev database) finally grew large enough to tip over two dropdown/dialog
+  pickers built on `ListView(children:)` — the same Sliver-backed lazy-build class
+  documented repeatedly this session (`credential_form_screen.dart`,
+  `admin_test.dart`'s Users tab). `sharing_test.dart`'s share-recipient dropdown and
+  `teams_test.dart`'s add-member dialog both needed to scroll/ensureVisible their target
+  option into the built viewport before tapping, rather than assuming a short list.
+  Fixing `sharing_test.dart` also surfaced a genuine Flutter `flutter_test` API footgun
+  worth remembering: `find.text(x).last` **throws** `StateError: Bad state: No element`
+  rather than returning an empty result when there are zero matches — fine to use once
+  existence is already confirmed, wrong for an "does this exist yet" polling condition
+  (use the un-`.last`'d base finder for the existence check, apply `.last` only at the
+  point of actually tapping).
+
 **MOB-LINK-01: Smart link dispatch** (FR-LINK-01/02)
 - Port `computeFieldLink`/`networkDeviceLink` dispatch tables exactly; `url_launcher` for
   OS hand-off.
