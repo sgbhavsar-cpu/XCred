@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers/core_providers.dart';
 import '../../core/session/org_settings.dart';
+import '../../core/session/session_actions.dart';
 
 /// Placeholder landing screen — the real Dashboard (FR-DASH-01..04, stat cards,
 /// expiring-soon list, activity feed) is Sprint 1.4+ scope per sprint-plan.md, not this
@@ -11,9 +12,10 @@ import '../../core/session/org_settings.dart';
 /// the JWT from [authSessionProvider], the request reaches the real dev backend, and the
 /// response is unwrapped through [ApiClient] exactly like any other screen will — and,
 /// as of Sprint 1.2, to populate [orgSettingsProvider] (the same place the web app's
-/// hardcoded-defaults bug originated, per this session's web fix), host the
-/// Lock Now / Log Out actions until Settings (later sprint) exists, and as of Sprint
-/// 1.3/1.5, link into the real Credentials/Folders/Tags screens.
+/// hardcoded-defaults bug originated, per this session's web fix), and as of Sprint
+/// 1.3/1.5, link into the real Credentials/Folders/Tags screens. Lock Now / Log Out stay
+/// as quick-access AppBar icons here (as of Sprint 2.3, also available from Settings)
+/// rather than moving there entirely, so existing flows through this screen don't change.
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -57,20 +59,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  Future<void> _lockNow() async {
-    // Soft lock: clears the in-memory session only. The wrapped key in
-    // SecureVaultStorage and the persisted tokens stay put, so the next app open goes
-    // to /unlock (fast re-entry), not /login — MOB-SESS-03's distinction from Log Out.
-    ref.read(authSessionProvider.notifier).clear();
-  }
-
-  Future<void> _logOut() async {
-    await ref.read(sessionPersistenceProvider).clear();
-    await ref.read(secureVaultStorageProvider).clear();
-    ref.invalidate(resumableSessionProvider);
-    ref.read(authSessionProvider.notifier).clear();
-  }
-
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(authSessionProvider);
@@ -79,14 +67,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         title: Text('Hi, ${session?.username ?? ''}'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
+          ),
+          IconButton(
             icon: const Icon(Icons.lock_outline),
             tooltip: 'Lock now',
-            onPressed: _lockNow,
+            onPressed: () => lockNow(ref),
           ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
-            onPressed: _logOut,
+            onPressed: () => logOut(ref),
           ),
         ],
       ),

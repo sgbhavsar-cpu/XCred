@@ -271,7 +271,8 @@ public class AuthController(
         var userId = GetCurrentUserId()!.Value;
         var user = await db.Users.FindAsync(userId);
         if (user == null) return NotFound();
-        user.NotificationPreferences = System.Text.Json.JsonSerializer.Serialize(req);
+        user.NotificationPreferences = System.Text.Json.JsonSerializer.Serialize(req,
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
         await db.SaveChangesAsync();
         return Ok(ApiResponse<string>.Ok("Preferences saved."));
     }

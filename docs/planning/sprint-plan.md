@@ -549,20 +549,59 @@ self-removal ("leave team") for any member regardless of role, matching the back
 
 ### Sprint 2.3 — Settings
 
+**Status: Done (2026-08-10).** Verified end-to-end on the Pixel_10_Pro emulator against
+the live Docker dev backend with `integration_test/settings_test.dart`: a throwaway
+account (never `xcred_admin` — this test changes the account's login password, and every
+other integration test in the project hardcodes admin's password) views its Profile
+section, changes its login password and confirms the *old* password stops working while
+the *new* one logs in successfully, toggles a notification preference off and confirms
+it's still off after navigating away and back (a genuine server round-trip, not just
+local state), and exports a backup then restores it, confirming the one credential it
+contains is recognized as a duplicate and skipped rather than re-created.
+
+No dedicated Settings screen existed before this sprint — `/settings` is new, reachable
+from a new AppBar icon on the dashboard (Lock Now / Log Out stay on the dashboard too as
+quick-access icons, now backed by a shared `session_actions.dart` helper both screens
+call, rather than moving those two actions off the dashboard entirely and risking every
+other sprint's integration tests that already tap them there).
+
+Two real bugs found and fixed, both an identical class already seen in Sprint 2.2 — a
+mobile repository method assuming a JSON *object* response where the backend actually
+returns `ApiResponse<string>` (a plain string), throwing a cast error on every call:
+`TeamsRepository`-style, this time `SettingsRepository.updateNotificationPreferences`
+against `PUT /api/auth/notification-preferences`. A **third, backend-side** bug was
+also found and fixed (`AuthController.cs`): that same endpoint persisted the
+notification-preferences JSON blob via a raw `JsonSerializer.Serialize(req)` call with
+no naming policy, defaulting to PascalCase property names (`ExpiryReminders`), while
+every other JSON contract in the app — including this same field's own hard-coded
+*default* value on `User.NotificationPreferences` — uses camelCase. The practical
+effect: saving a preference from either mobile *or the web app* silently "succeeded"
+(no error, real HTTP 200) but the toggle could never actually be read back correctly
+afterward, permanently reverting to defaults on next load. Fixed by passing
+`JsonNamingPolicy.CamelCase` explicitly, matching the rest of the API, and redeployed
+to the dev Docker stack (`docker compose build api && docker compose up -d api`) before
+re-verifying.
+
+One test-authoring bug, a new variant of a recurring class this session: a SnackBar is
+docked to the bottom of the *Scaffold's viewport*, not the scrollable content beneath
+it — scrolling the list further doesn't move it out of the way, so a tap on content that
+ends up at the bottom edge while a SnackBar is still shown can land on the SnackBar
+instead. Fixed by explicitly polling for the SnackBar's own disappearance before
+scrolling/tapping near the bottom of a long Settings-style screen, not just waiting for
+`pumpAndSettle` to report "nothing animating."
+
 **MOB-SET-01: Profile, change login password** (FR-SET-01/02)
 **MOB-SET-02: Notification preferences** (FR-SET-03)
 **MOB-SET-03: Backup export/restore** (FR-SET-04)
-**MOB-SET-04: Master password rotation** (FR-SET-05, FR-AUTH-05)
-- The highest-risk Settings story: full client-side re-encryption of every credential's
-  wrapped key, matching web's per-credential fallback-to-old-key safety net on individual
-  re-wrap failure, **plus** invalidating/re-wrapping the biometric-unlock secure-storage
-  entry (mobile-only concern, no web equivalent).
-- Test cases: rotate master password, confirm all credentials still decrypt correctly
-  under the new key; confirm the *old* wrapped biometric-unlock secret can no longer
-  unlock the vault (must re-enroll or use the new master password); simulate one
-  credential's re-wrap failing (e.g. malformed test data) and confirm the rest of the
-  vault still completes successfully with a clear post-rotation warning about the one
-  that didn't.
+**MOB-SET-04: Master password rotation** (FR-SET-05, FR-AUTH-05) — **Descoped for
+mobile (decided 2026-08-10).** The account/vault is shared with the web app, which
+already has this flow; a mobile user who suspects their master password is compromised
+can rotate it there. Skipping the highest-risk story in Sprint 2.3 (full client-side
+re-encryption of every credential's wrapped key, per-credential partial-failure
+handling, plus invalidating the mobile-only biometric-unlock secure-storage entry) is a
+deliberate scope trade, not an oversight — revisit if mobile-only accounts (no realistic
+access to the web app) become a real usage pattern. The mobile Settings screen carries a
+short note pointing users to the web app for this action.
 **MOB-SET-05: Server URL, biometric toggle, auto-lock timeout, Lock Now, Log Out**
 (FR-SET-06) — covered incrementally by MOB-SRV-01/MOB-SESS-01/03, this story is the
 Settings-screen wiring that surfaces them together.

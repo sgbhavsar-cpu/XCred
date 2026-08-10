@@ -12,6 +12,7 @@ import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/folders/folders_screen.dart';
 import '../../features/session/unlock_screen.dart';
 import '../../features/setup/server_setup_screen.dart';
+import '../../features/settings/settings_screen.dart';
 import '../../features/shares/shares_screen.dart';
 import '../../features/tags/tags_screen.dart';
 import '../../features/teams/team_detail_screen.dart';
@@ -100,6 +101,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             TeamDetailScreen(teamId: state.pathParameters['id']!),
       ),
+      GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
     ],
   );
 });
