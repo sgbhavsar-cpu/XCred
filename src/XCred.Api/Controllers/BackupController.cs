@@ -21,6 +21,9 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
     {
         var userId = GetUserId();
 
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return NotFound();
+
         var credentials = await db.Credentials.AsNoTracking()
             .Where(c => c.OwnerId == userId)
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
@@ -37,6 +40,21 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
 
         var backup = new VaultBackup
         {
+            // Restoring this backup onto a fresh registration (a different account, even with
+            // the same username/master password — see BUG-2026-08-11) is otherwise impossible:
+            // every credential's EncryptedCredentialKey is RSA-wrapped under THIS account's
+            // PublicKey, and a fresh registration always mints an unrelated random keypair and
+            // salt, regardless of whether the password matches. Including this account's own
+            // crypto material closes that gap — restore can now optionally re-point the target
+            // account's identity at this one (see AuthController's change-master-key, which the
+            // web app's Restore flow now calls first when these fields are present). This is
+            // exactly what's already sent to this same user's own browser on every login
+            // (AuthController.Login) — no new sensitive-data exposure, same [Authorize] trust
+            // boundary, just carried in a file instead of a login response.
+            KeyDerivationSalt = user.KeyDerivationSalt,
+            PublicKey = user.PublicKey,
+            EncryptedPrivateKey = user.EncryptedPrivateKey,
+            PrivateKeyIv = user.PrivateKeyIv,
             ExportedAt = DateTime.UtcNow,
             Credentials = credentials.Select(c => new BackupCredential
             {
@@ -77,7 +95,19 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
         await audit.LogAsync(userId, AuditActions.BackupExported, "Backup", null,
             $"{credentials.Count} credentials", GetIp());
 
-        var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = false });
+        // Pre-existing gap (same class as AuthController's notification-preferences bug fixed
+        // earlier): a manual JsonSerializer.Serialize call bypasses ASP.NET Core's own
+        // camelCase default, which only applies to the framework's MVC output formatter (e.g.
+        // Ok(...) results), not calls made directly like this one. Restore's [FromBody] binding
+        // tolerated the resulting PascalCase file only because System.Text.Json's deserializer
+        // is case-insensitive by default — but the web app's own JS reads fields like
+        // `backup.keyDerivationSalt` straight off the parsed JSON, which is NOT
+        // case-insensitive, so this needs to actually match everywhere else in the app.
+        var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions
+        {
+            WriteIndented = false,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
         var bytes = System.Text.Encoding.UTF8.GetBytes(json);
         return File(bytes, "application/json", $"xcred-backup-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xcredbak");
     }
@@ -196,11 +226,19 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
 
 public class VaultBackup
 {
-    public string Version { get; set; } = "1.0";
+    public string Version { get; set; } = "1.1";
     public DateTime ExportedAt { get; set; }
     public List<BackupCredential> Credentials { get; set; } = [];
     public List<BackupFolder> Folders { get; set; } = [];
     public List<BackupTag> Tags { get; set; } = [];
+
+    // Account crypto material — optional (absent on backups exported before v1.1, and on
+    // Restore's [FromBody] side these are simply never read by the restore-credentials logic
+    // below, only by the web app's separate change-master-key call). See Export()'s comment.
+    public string? KeyDerivationSalt { get; set; }
+    public string? PublicKey { get; set; }
+    public string? EncryptedPrivateKey { get; set; }
+    public string? PrivateKeyIv { get; set; }
 }
 
 public class BackupCredential

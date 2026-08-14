@@ -4,9 +4,10 @@ import { Save, Eye, EyeOff, AlertTriangle, Shield, Bell, User, Download, Upload,
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
-import { deriveKey, generateSalt, generateKeyPair, encryptPrivateKey, decryptPrivateKey, decryptKeyWithPrivateKey, encryptKeyWithPublicKey } from '@/lib/crypto';
+import { deriveKey, generateSalt, generateKeyPair, encryptPrivateKey, decryptPrivateKey, decryptKeyWithPrivateKey, encryptKeyWithPublicKey, decrypt } from '@/lib/crypto';
 import { encryptCredentialData } from '@/lib/vault';
 import { formatDateTime } from '@/lib/utils';
+import RestoreAccountKeysModal from './components/RestoreAccountKeysModal';
 
 type Tab = 'profile' | 'security' | 'notifications' | 'backup' | 'master-key';
 
@@ -40,7 +41,9 @@ export default function SettingsPage() {
       {tab === 'profile' && <ProfileTab user={user} />}
       {tab === 'security' && <ChangePasswordTab />}
       {tab === 'notifications' && <NotificationsTab />}
-      {tab === 'backup' && <BackupTab privateKey={privateKey} />}
+      {tab === 'backup' && (
+        <BackupTab privateKey={privateKey} setPublicKey={setPublicKey} setCryptoKeys={setCryptoKeys} />
+      )}
       {tab === 'master-key' && (
         <ChangeMasterKeyTab
           privateKey={privateKey}
@@ -219,11 +222,26 @@ function NotificationsTab() {
 }
 
 /* ─── Backup & Restore ────────────────────────────────────────────────── */
-function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
+interface RestoreResult {
+  credentialsRestored: number;
+  credentialsSkipped: number;
+  tagsRestored: number;
+  foldersRestored: number;
+  accountKeysRestored?: boolean;
+  credentialsReWrapped?: number;
+}
+
+function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
+  privateKey: CryptoKey | null;
+  setPublicKey: (k: string) => void;
+  setCryptoKeys: (sym: CryptoKey, priv: CryptoKey) => void;
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
-  const [restoreResult, setRestoreResult] = useState<{ credentialsRestored: number; credentialsSkipped: number; tagsRestored: number; foldersRestored: number } | null>(null);
+  const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<any | null>(null);
+  const [plainExporting, setPlainExporting] = useState(false);
 
   const handleExport = async () => {
     setExporting(true);
@@ -240,22 +258,126 @@ function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
     finally { setExporting(false); }
   };
 
+  // Shared by both restore paths: a plain restore (this backup's own account keys either
+  // absent, or already matching this account) just replays credentials/folders/tags as before.
+  const restoreCredentials = async (backup: any, extra: Partial<RestoreResult> = {}) => {
+    const res = await api.post('/backup/restore', backup);
+    setRestoreResult({ ...res.data.data, ...extra });
+    toast.success('Backup restored successfully.');
+  };
+
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setRestoring(true);
     setRestoreResult(null);
     try {
       const text = await file.text();
       const backup = JSON.parse(text);
-      const res = await api.post('/backup/restore', backup);
-      setRestoreResult(res.data.data);
-      toast.success('Backup restored successfully.');
+
+      // Backups exported since VaultBackup v1.1 carry the exporting account's own crypto
+      // material — needed to make a backup from a different machine's fresh registration
+      // actually decrypt here. Route through the confirmation modal instead of restoring
+      // immediately whenever it's present, since applying it replaces this account's
+      // encryption identity.
+      if (backup.keyDerivationSalt && backup.encryptedPrivateKey && backup.privateKeyIv && backup.publicKey) {
+        setPendingBackup(backup);
+        return;
+      }
+
+      setRestoring(true);
+      await restoreCredentials(backup);
     } catch (err: any) {
       toast.error(err.response?.data?.error?.message ?? 'Failed to restore backup. File may be invalid.');
     } finally {
       setRestoring(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAccountKeysVerified = async (symmetricKey: CryptoKey, backupPrivateKey: CryptoKey, reWrappedCount: number) => {
+    const backup = pendingBackup;
+    setPendingBackup(null);
+    setRestoring(true);
+    try {
+      await restoreCredentials(backup, { accountKeysRestored: true, credentialsReWrapped: reWrappedCount });
+      setPublicKey(backup.publicKey);
+      setCryptoKeys(symmetricKey, backupPrivateKey);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message ?? 'Account keys were restored, but importing the backup\'s credentials failed. Try restoring the same file again.');
+    } finally {
+      setRestoring(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePlainExport = async () => {
+    if (!privateKey) { toast.error('Vault is not unlocked.'); return; }
+    if (!confirm(
+      'This will download ALL your credentials as PLAIN, UNENCRYPTED text — anyone who ' +
+      'gets this file can read everything in it. Store it somewhere very safe (e.g. an ' +
+      'offline encrypted drive) and delete it when you no longer need it. Continue?'
+    )) return;
+
+    setPlainExporting(true);
+    try {
+      const res = await api.get('/credentials');
+      const items: any[] = res.data.data;
+
+      let failed = 0;
+      const decrypted = await Promise.all(items.map(async (item) => {
+        try {
+          const credentialKey = await decryptKeyWithPrivateKey(privateKey, item.encryptedCredentialKey);
+          const plaintext = await decrypt(credentialKey, item.encryptedData, item.dataIv);
+          const fields = JSON.parse(plaintext);
+          if (typeof fields.customFields === 'string') {
+            try { fields.customFields = JSON.parse(fields.customFields); } catch { /* leave as-is */ }
+          }
+
+          const attachments = await Promise.all((item.attachments ?? []).map(async (att: any) => {
+            const name = await decrypt(credentialKey, att.encryptedFileName, att.fileNameIv).catch(() => 'Encrypted file');
+            return { fileName: name, fileSizeBytes: att.fileSizeBytes, uploadedAt: att.uploadedAt };
+          }));
+
+          return {
+            id: item.id,
+            type: item.type,
+            folder: item.folderName ?? null,
+            credentialGroup: item.credentialGroupName ?? null,
+            tags: (item.tags ?? []).map((t: any) => t.name),
+            expiryDate: item.expiryDate,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            attachments,
+            ...fields,
+          };
+        } catch {
+          failed++;
+          return { id: item.id, type: item.type, error: 'Failed to decrypt this credential.' };
+        }
+      }));
+
+      const bundle = {
+        warning: 'UNENCRYPTED EXPORT — every field below is plain text. Treat this file like the passwords it contains.',
+        exportedAt: new Date().toISOString(),
+        credentialCount: decrypted.length,
+        credentials: decrypted,
+      };
+
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `xcred-plaintext-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast.success(failed > 0
+        ? `Exported ${decrypted.length} credentials (${failed} failed to decrypt).`
+        : `Exported ${decrypted.length} credentials.`);
+    } catch {
+      toast.error('Failed to export credentials.');
+    } finally {
+      setPlainExporting(false);
     }
   };
 
@@ -273,7 +395,10 @@ function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
         <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 flex gap-2">
           <Shield className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
           <p className="text-xs text-indigo-700">
-            The backup file contains your credentials in their encrypted form. Without your master password, the backup cannot be decrypted by anyone.
+            The backup file contains your credentials in their encrypted form, plus your
+            account's own encryption keys (also RSA-wrapped) — this is what lets a restore work
+            even after a fresh registration on a different machine. Without your master
+            password, none of it can be decrypted by anyone.
           </p>
         </div>
         <button onClick={handleExport} disabled={exporting}
@@ -295,7 +420,10 @@ function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700">
-            Only restore backups created from your own account. Credentials are encrypted with your personal key — backups from other accounts cannot be decrypted.
+            If this backup includes the original account's encryption keys (every backup
+            exported since this feature shipped does), restoring it can also repair a fresh
+            registration on a new device — you'll be asked to confirm the master password used
+            when the backup was created before anything changes.
           </p>
         </div>
         <input ref={fileInputRef} type="file" accept=".xcredbak,.json" className="hidden" onChange={handleRestore} />
@@ -317,9 +445,51 @@ function BackupTab({ privateKey }: { privateKey: CryptoKey | null }) {
               <span>Folders restored: <b>{restoreResult.foldersRestored}</b></span>
               <span>Tags restored: <b>{restoreResult.tagsRestored}</b></span>
             </div>
+            {restoreResult.accountKeysRestored && (
+              <p className="text-xs text-emerald-700 mt-3 pt-3 border-t border-emerald-200">
+                This account's encryption identity was replaced with the backup's
+                {restoreResult.credentialsReWrapped ? ` (${restoreResult.credentialsReWrapped} pre-existing credential${restoreResult.credentialsReWrapped === 1 ? '' : 's'} on this account re-wrapped to match)` : ''} —
+                you're already unlocked with it, nothing else to do.
+              </p>
+            )}
           </div>
         )}
       </div>
+
+      {/* Plain JSON export */}
+      <div className="bg-white rounded-xl border border-red-200 p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-800">Export as Plain JSON</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Decrypts every credential and downloads them as a single, human-readable JSON file — a
+            last-resort failsafe for when you can't rely on this app or your master password to
+            get your data back.
+          </p>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">
+            This file is <b>not encrypted</b>. Everything XCred normally protects — passwords,
+            notes, custom fields — will be sitting in plain text. Only export this if you have a
+            genuinely secure place to put it (e.g. an offline drive, a safe), and delete it once
+            you no longer need it.
+          </p>
+        </div>
+        <button onClick={handlePlainExport} disabled={plainExporting || !privateKey}
+          className="flex items-center gap-2 border border-red-300 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-60 transition-colors">
+          <Download className="w-4 h-4" />
+          {plainExporting ? 'Exporting…' : 'Export All as Plain JSON'}
+        </button>
+      </div>
+
+      {pendingBackup && (
+        <RestoreAccountKeysModal
+          backup={pendingBackup}
+          currentPrivateKey={privateKey}
+          onClose={() => { setPendingBackup(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+          onVerified={handleAccountKeysVerified}
+        />
+      )}
     </div>
   );
 }
