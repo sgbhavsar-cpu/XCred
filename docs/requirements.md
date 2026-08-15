@@ -18,7 +18,7 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 |-------------------|--------------------------------------------|
 | Type              | Organizational credential vault            |
 | Users             | ~10–15 internal users                      |
-| Deployment        | IIS on Windows Server (hosted, centralized)|
+| Deployment        | IIS on Windows Server (hosted, centralized), or a self-contained portable build (SQLite, no IIS/SQL Server) — see §17/§18 |
 | Encryption Model  | Zero-knowledge / client-side               |
 | Access Model      | Self-registered users + admin role         |
 | Protocol          | HTTPS (production); HTTP permitted in dev  |
@@ -456,10 +456,34 @@ The home page shows:
 
 | Attribute | Decision |
 |-----------|----------|
-| Database | **SQL Server LocalDB** (development/initial) |
+| Database | **SQL Server LocalDB** (development/initial) for the hosted IIS deployment; **SQLite** for the self-contained portable distribution (see below) |
 | Migration Path | Designed for **full SQL Server** or **Azure SQL** with no code changes |
-| ORM | EF Core 9 with code-first migrations |
+| ORM | EF Core 10 with code-first migrations |
 | Sensitive Columns | All credential data stored as **encrypted NVARCHAR(MAX)** blobs |
+
+### 17.0 Portable / SQLite Option
+
+Alongside the hosted SQL-Server/IIS path (§18), XCred also ships as a **self-contained
+portable build**: a single-file, self-contained executable that needs no IIS, no
+separately-installed .NET runtime, and no SQL Server — it uses SQLite as an embedded,
+file-based database instead. This is an additive second mode, not a replacement; the
+existing SQL-Server-backed installer continues to work unchanged.
+
+- `Database:Provider` config key (`"SqlServer"` default, or `"Sqlite"`) selects the
+  active EF Core provider at startup. `AppDbContext` is shared by both; a thin
+  `SqliteAppDbContext` subclass exists solely so EF Core can scope each provider's
+  migrations independently (`Data/Migrations/` for SQL Server, `Data/Migrations/Sqlite/`
+  for SQLite) — both are generated from the same entity model and stay in sync by
+  construction.
+- The SQLite database is a single file (`data/xcred.db`) stored next to the
+  application, requiring no separate database server or service.
+- An admin-only **System Backup** feature (distinct from the existing per-user
+  Backup & Restore in §12) exports every table in the instance — all users, credentials,
+  folders, tags, groups, shares, and audit logs — as a portable, engine-agnostic JSON+zip
+  archive. Restoring that archive onto a fresh instance (of either provider) reconstructs
+  the whole instance, including original login-password hashes and RSA key material, so
+  it doubles as a SQL-Server-to-SQLite (or SQLite-to-SQL-Server) migration tool for
+  cloning an entire deployment onto different hardware.
 
 ### 17.1 Core Tables (Logical)
 - `Users` — id, username, email, password_hash, salt, public_key, encrypted_private_key, created_at, is_active, role
@@ -482,10 +506,23 @@ The home page shows:
 - EF Core migrations are environment-aware.
 - Connection string is configurable via environment variable or encrypted config.
 - Moving from LocalDB to SQL Server: change connection string only — no schema changes required.
+- The SQLite provider (§17.0) maintains its own, separately-scoped migration history
+  generated from the same entity model, so both providers apply schema changes
+  independently without affecting one another.
+- Moving data between providers (e.g. an existing SQL-Server instance onto the portable
+  SQLite build, or vice versa) uses the System Backup export/restore feature (§17.0), not
+  a connection-string change — the two engines don't share a wire format, so migration is
+  done at the application/data level rather than the database level.
 
 ---
 
 ## 18. Deployment
+
+XCred ships in two supported modes: the original hosted IIS/SQL-Server deployment, and a
+self-contained portable build. Both are maintained; the portable mode does not replace
+the hosted one.
+
+### 18.1 Hosted (IIS / SQL Server)
 
 | Attribute | Value |
 |-----------|-------|
@@ -496,12 +533,33 @@ The home page shows:
 | Development | HTTP permitted; optional self-signed cert suggestion via `dotnet dev-certs` |
 | Environment Config | `appsettings.Production.json` + environment variables; secrets via Windows DPAPI or IIS app pool identity |
 
-### 18.1 Development HTTPS (Optional Suggestion)
+Provisioned via the Inno Setup installer (`installer/setup.iss`), which installs IIS,
+the .NET Hosting Bundle, and SQL Server Express/LocalDB, then wires up an IIS site.
+
+#### 18.1.1 Development HTTPS (Optional Suggestion)
 Run once to trust a self-signed cert in development:
 ```bash
 dotnet dev-certs https --trust
 ```
 This enables HTTPS in dev without any manual certificate management.
+
+### 18.2 Portable (Self-Contained, No IIS/SQL Server)
+
+| Attribute | Value |
+|-----------|-------|
+| Runtime | Self-contained single-file executable (`win-x64`) — bundles the .NET runtime, no separate install required |
+| Database | SQLite (§17.0), a single file stored next to the application |
+| Web Server | Kestrel only, listening directly on `http://localhost:5080` — no IIS |
+| Distribution | Unzip anywhere and run `Start-XCred.bat`; the app opens in the default browser |
+| Background operation | Optional one-time `Install-Service.ps1` registers XCred as a Windows Service (`XCredVault`) so it survives closing the console window or logging out; `Uninstall-Service.ps1` reverses this |
+| Environment Config | `appsettings.Portable.json`, baked into the published output as the sole `appsettings.json` — no environment variables required |
+| Secrets | JWT signing secret is generated randomly on first boot and persisted to `data/jwt-secret.txt` so restarts don't invalidate existing sessions |
+| Platforms | Windows only (v1) |
+
+Produced via `scripts/publish-portable.ps1`, which builds the React frontend, publishes
+the API with the `Portable` publish profile (`SelfContained`, `PublishSingleFile`), and
+assembles the launcher scripts and README into a distributable folder. See
+`docs/deployment/portable.md` for the end-user walkthrough.
 
 ---
 
@@ -544,6 +602,16 @@ The following are **not in scope for v1** but should be kept in mind during arch
 - Email delivery requires a reachable SMTP server configured by the admin.
 - SQL Server LocalDB is suitable for the initial user count; scaling beyond ~50 users or high-frequency access should prompt migration to full SQL Server.
 - File attachment storage is in the database as encrypted blobs for v1 (simplicity); a file system or blob storage backend may be preferable at higher volumes.
+- The portable/SQLite build (§17.0, §18.2) targets small, single-instance, single-machine
+  deployments (a team lead's own workstation, a USB drive, an offline demo) — it is not
+  intended to replace the hosted SQL-Server path at the ~10-50 concurrent-user scale
+  those NFRs (§20) target. SQLite serializes writes at the file level, so it is
+  appropriate for light concurrent use, not high-frequency multi-user access.
+- The portable build serves plain HTTP on localhost by design (no IIS/reverse-proxy in
+  front of it); users who expose it beyond localhost are responsible for their own
+  transport-layer protection (e.g. a reverse proxy with TLS) — the zero-knowledge
+  encryption model means credential data itself is never sent or stored in plaintext
+  regardless of transport.
 
 ---
 

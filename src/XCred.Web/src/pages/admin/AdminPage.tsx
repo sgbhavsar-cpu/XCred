@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { UserCheck, UserX, Shield, Users, Activity, Settings, Save, Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { UserCheck, UserX, Shield, Users, Activity, Settings, Save, Send, HardDrive, Download, Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api from '@/api/client';
 import toast from 'react-hot-toast';
 import { formatDateTime } from '@/lib/utils';
@@ -10,7 +10,7 @@ interface AdminUser {
   isActive: boolean; isApproved: boolean; createdAt: string; lastLoginAt: string | null;
 }
 
-type Tab = 'users' | 'pending' | 'audit' | 'settings';
+type Tab = 'users' | 'pending' | 'audit' | 'settings' | 'system-backup';
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
@@ -52,6 +52,7 @@ export default function AdminPage() {
     { key: 'pending', label: 'Pending Approval', icon: <UserCheck className="w-4 h-4" />, badge: pending.length },
     { key: 'audit', label: 'Audit Log', icon: <Activity className="w-4 h-4" /> },
     { key: 'settings', label: 'Org Settings', icon: <Settings className="w-4 h-4" /> },
+    { key: 'system-backup', label: 'System Backup', icon: <HardDrive className="w-4 h-4" /> },
   ];
 
   return (
@@ -81,7 +82,7 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {loading && tab !== 'settings' ? (
+      {loading && tab !== 'settings' && tab !== 'system-backup' ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
       ) : tab === 'pending' ? (
         <PendingTab users={pending} onApprove={approve} />
@@ -89,6 +90,8 @@ export default function AdminPage() {
         <AuditTab logs={auditLogs} />
       ) : tab === 'settings' ? (
         <OrgSettingsTab />
+      ) : tab === 'system-backup' ? (
+        <SystemBackupTab />
       ) : (
         <UsersTab users={users} onDeactivate={deactivate} onActivate={activate} onSetRole={setRole} />
       )}
@@ -325,6 +328,154 @@ function OrgSettingsTab() {
           <Save className="w-4 h-4" />
           {saving ? 'Saving…' : 'Save All Settings'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── System Backup (whole-instance, admin-only) ─────────────────────── */
+interface SystemBackupSummary {
+  users: number; groups: number; appSettings: number; groupMembers: number;
+  folders: number; credentialGroups: number; tags: number; credentials: number;
+  credentialTags: number; credentialAttachments: number; sharedCredentials: number; auditLogs: number;
+}
+
+function SystemBackupTab() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [result, setResult] = useState<{ summary: SystemBackupSummary; wiped: boolean } | null>(null);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/system-backup/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `xcred-system-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('System backup exported.');
+    } catch {
+      toast.error('Failed to export system backup.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const doRestore = async (file: File, force: boolean) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/system-backup/restore${force ? '?force=true' : ''}`, formData);
+  };
+
+  const handleFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResult(null);
+    setRestoring(true);
+    try {
+      const res = await doRestore(file, false);
+      setResult({ summary: res.data.data, wiped: false });
+      toast.success('System backup restored.');
+    } catch (err: any) {
+      if (err.response?.data?.error?.code === 'TARGET_NOT_EMPTY') {
+        const confirmed = confirm(
+          'This instance already has data. Restoring will PERMANENTLY WIPE every ' +
+          'existing user, credential, and setting and replace it all with the backup\'s ' +
+          'data. This cannot be undone. Are you absolutely sure?'
+        );
+        if (confirmed) {
+          try {
+            const res2 = await doRestore(file, true);
+            setResult({ summary: res2.data.data, wiped: true });
+            toast.success('System backup restored — all previous data was replaced.');
+          } catch (err2: any) {
+            toast.error(err2.response?.data?.error?.message ?? 'Failed to restore system backup.');
+          }
+        }
+      } else {
+        toast.error(err.response?.data?.error?.message ?? 'Failed to restore system backup.');
+      }
+    } finally {
+      setRestoring(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-800">Export Full System Backup</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Downloads a zip containing every user, credential, folder, tag, team, share, and
+            audit log on this instance — not just your own vault. Restoring it onto another
+            XCred install (any database engine) recreates the whole instance there.
+          </p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700">
+            This file is more sensitive than your own per-account backup (Settings → Backup
+            &amp; Restore): it includes every user's login password hash, their individually
+            still-encrypted RSA private key, and the full audit trail. Handle it like the
+            keys to the whole vault, because it is.
+          </p>
+        </div>
+        <button onClick={handleExport} disabled={exporting}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+          <Download className="w-4 h-4" />
+          {exporting ? 'Exporting…' : 'Export Full System Backup'}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-red-200 p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-800">Restore Full System Backup</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Meant for a fresh, empty instance (e.g. a newly set-up portable install). If this
+            instance already has data, restoring requires an extra confirmation and{' '}
+            <b>permanently wipes and replaces everything</b> currently here.
+          </p>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">
+            High-risk operation. If it wipes this instance's data (including your own
+            account), you may be signed out — log back in with an account from the restored
+            backup afterward.
+          </p>
+        </div>
+        <input ref={fileInputRef} type="file" accept=".zip" className="hidden" onChange={handleFilePicked} />
+        <button onClick={() => fileInputRef.current?.click()} disabled={restoring}
+          className="flex items-center gap-2 border border-red-300 text-red-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-60 transition-colors">
+          <Upload className="w-4 h-4" />
+          {restoring ? 'Restoring…' : 'Select System Backup File'}
+        </button>
+
+        {result && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <p className="font-semibold text-emerald-800">
+                Restore Complete{result.wiped ? ' — Previous Data Wiped' : ''}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-emerald-700">
+              <span>Users: <b>{result.summary.users}</b></span>
+              <span>Credentials: <b>{result.summary.credentials}</b></span>
+              <span>Folders: <b>{result.summary.folders}</b></span>
+              <span>Tags: <b>{result.summary.tags}</b></span>
+              <span>Teams: <b>{result.summary.groups}</b></span>
+              <span>Credential Groups: <b>{result.summary.credentialGroups}</b></span>
+              <span>Attachments: <b>{result.summary.credentialAttachments}</b></span>
+              <span>Shares: <b>{result.summary.sharedCredentials}</b></span>
+              <span>Audit Log Entries: <b>{result.summary.auditLogs}</b></span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

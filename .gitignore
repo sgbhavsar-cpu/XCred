@@ -53,5 +53,8 @@ Thumbs.db
 /publish/
 installer/*.exe
 
+# ── Build artifacts (regenerate via scripts/publish-portable.ps1) ─────────────
+/publish-portable/
+
 # ── Third-party redist binaries — fetch per installer/redist/README.md ───────
 installer/redist/*.msi

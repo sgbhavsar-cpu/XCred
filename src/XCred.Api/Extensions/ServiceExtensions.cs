@@ -12,9 +12,23 @@ public static class ServiceExtensions
 {
     public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration config)
     {
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(config.GetConnectionString("DefaultConnection"),
-                sql => sql.MigrationsAssembly("XCred.Infrastructure")));
+        // Defaults to SqlServer when the key is absent — every existing appsettings.json /
+        // appsettings.Production.json has no Database:Provider key, so this preserves
+        // today's behavior exactly for the IIS/SQL-Server installer path. Sqlite is the
+        // portable/self-contained distribution's provider (see appsettings.Portable.json).
+        var provider = config["Database:Provider"] ?? "SqlServer";
+        if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddDbContext<AppDbContext, SqliteAppDbContext>(options =>
+                options.UseSqlite(config.GetConnectionString("DefaultConnection"),
+                    sqlite => sqlite.MigrationsAssembly("XCred.Infrastructure")));
+        }
+        else
+        {
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(config.GetConnectionString("DefaultConnection"),
+                    sql => sql.MigrationsAssembly("XCred.Infrastructure")));
+        }
         return services;
     }
 

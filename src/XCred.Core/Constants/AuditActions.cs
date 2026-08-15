@@ -38,4 +38,7 @@ public static class AuditActions
 
     public const string BackupExported = "BackupExported";
     public const string BackupImported = "BackupImported";
+
+    public const string SystemBackupExported = "SystemBackupExported";
+    public const string SystemBackupRestored = "SystemBackupRestored";
 }

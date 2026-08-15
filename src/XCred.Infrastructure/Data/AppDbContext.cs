@@ -4,7 +4,12 @@ using XCred.Core.Entities;
 
 namespace XCred.Infrastructure.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+// Constructor takes the non-generic DbContextOptions (not DbContextOptions<AppDbContext>)
+// deliberately — this is what lets SqliteAppDbContext subclass it for EF Core's
+// multi-provider migrations pattern (each provider's migrations are scoped by the
+// concrete DbContext type via the [DbContext(typeof(...))] designer attribute). See
+// SqliteAppDbContext.cs.
+public class AppDbContext(DbContextOptions options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Credential> Credentials => Set<Credential>();
