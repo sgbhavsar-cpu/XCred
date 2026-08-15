@@ -2,6 +2,7 @@
 // backend. Uses a throwaway account rather than xcred_admin specifically because this
 // test changes the account's login password — every other integration test in this
 // project hardcodes xcred_admin's password, so mutating it here would break them all.
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -247,10 +248,11 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 5));
     expect(fakeExchange.savedBytes, isNotNull,
         reason: 'MOB-SET-03: export must produce real backup bytes');
+    final originalBackupBytes = fakeExchange.savedBytes!;
 
     fakeExchange.nextPick = PickedFileData(
       name: 'backup.xcredbak',
-      bytes: fakeExchange.savedBytes!,
+      bytes: originalBackupBytes,
       mimeType: 'application/json',
     );
     await _tapVisible(tester, find.widgetWithText(OutlinedButton, 'Restore'));
@@ -264,5 +266,53 @@ void main() {
         reason: 'MOB-SET-03: restoring a backup of data that already exists must be '
             "recognized as a duplicate and skipped, not silently re-created — the "
             'export/restore round trip must preserve identity');
+    await _tapVisible(tester, find.widgetWithText(TextButton, 'OK'));
+    await tester.pumpAndSettle();
+
+    // ============================================================
+    // Plain JSON export (failsafe) — decrypts real data, not a stub
+    // ============================================================
+    await _tapVisible(tester, find.widgetWithText(OutlinedButton, 'Export All as Plain JSON'));
+    await tester.pumpAndSettle();
+    expect(find.text('Export as Plain JSON?'), findsOneWidget);
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'Export'));
+    await tester.pumpAndSettle(const Duration(seconds: 5));
+
+    final plainJson = jsonDecode(utf8.decode(fakeExchange.savedBytes!)) as Map<String, dynamic>;
+    expect(plainJson['warning'], contains('UNENCRYPTED'),
+        reason: 'The export must carry an explicit unencrypted warning');
+    final exportedCreds = (plainJson['credentials'] as List).cast<Map<String, dynamic>>();
+    final exportedCred =
+        exportedCreds.firstWhere((c) => c['name'] == credName, orElse: () => <String, dynamic>{});
+    expect(exportedCred['password'], 'x',
+        reason: 'The plain JSON export must contain the real decrypted password, not a stub');
+    expect(exportedCred['username'], 'x');
+
+    // ============================================================
+    // Cross-machine backup refusal — MOB-SET-03 fix. Simulates a backup exported by a
+    // DIFFERENT account identity (as if from a fresh re-registration on another
+    // machine) by swapping in an unrelated publicKey. Full account-key restore
+    // (re-wrapping and swapping this account's identity) is deliberately web-only, same
+    // as master-password rotation (MOB-SET-04) — mobile's job is just to refuse
+    // clearly instead of reproducing the original "silently succeeds, then every
+    // credential fails to decrypt" bug on this platform too.
+    // ============================================================
+    final foreignBackup = jsonDecode(utf8.decode(originalBackupBytes)) as Map<String, dynamic>;
+    expect(foreignBackup['publicKey'], isNotNull,
+        reason: 'Backups exported by the fixed BackupController must carry account crypto '
+            'material for this refusal check to mean anything');
+    foreignBackup['publicKey'] = 'not-the-same-account-public-key';
+    fakeExchange.nextPick = PickedFileData(
+      name: 'foreign-backup.xcredbak',
+      bytes: Uint8List.fromList(utf8.encode(jsonEncode(foreignBackup))),
+      mimeType: 'application/json',
+    );
+    await _tapVisible(tester, find.widgetWithText(OutlinedButton, 'Restore'));
+    await tester.pumpAndSettle(const Duration(seconds: 5));
+    expect(find.text("Can't Restore This Backup Here"), findsOneWidget,
+        reason: 'A backup from a different account identity must be refused up front, not '
+            'silently "restored" into an undecryptable state');
+    expect(find.text('Restore Backup?'), findsNothing,
+        reason: 'The normal restore confirmation must never appear for a mismatched backup');
   });
 }

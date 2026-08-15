@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -223,15 +224,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     if (!mounted) return;
 
+    // MOB-SET-03 fix — a backup exported since the crypto-material change carries the
+    // exporting account's own PublicKey. If it doesn't match this session's, restoring as-is
+    // would silently "succeed" (rows get inserted) while leaving every credential permanently
+    // undecryptable (EncryptedCredentialKey stays wrapped under the OTHER account's public
+    // key) — exactly the confusing failure mode this is meant to prevent. Fixing this for
+    // real needs swapping this account's encryption identity to the backup's (re-wrapping
+    // whatever it already owns) — the same category of re-encryption risk MOB-SET-04
+    // deliberately keeps off mobile (see this file's class doc). Refuse up front with a clear
+    // explanation instead, rather than reproducing the original bug on this platform too.
+    final backupPublicKey = backup['publicKey'] as String?;
+    final session = ref.read(authSessionProvider);
+    if (backupPublicKey != null && session != null && backupPublicKey != session.publicKeySpkiB64) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Can't Restore This Backup Here"),
+            content: const Text(
+                'This backup was made by a different account identity than the one you\'re '
+                'signed into now — usually because the account was re-registered on a new '
+                'device/machine, even with the same username and master password. Restoring '
+                'it on mobile would leave every credential undecryptable.\n\n'
+                'Use the XCred web app\'s Settings → Backup & Restore instead — it can safely '
+                'switch this account back to the backup\'s original encryption keys before '
+                'restoring.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Restore Backup?'),
         content: const Text(
             'Credentials, folders, and tags from the file will be added to your vault. '
-            "Items that already exist are skipped, not duplicated. This only works for "
-            "a backup made from this same account — one from a different master "
-            "password will fail to decrypt after restoring."),
+            "Items that already exist are skipped, not duplicated."),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Restore')),
@@ -266,6 +299,120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Failed to restore backup.')));
       }
+    }
+  }
+
+  /// A last-resort failsafe: decrypts every credential client-side and hands the plain,
+  /// human-readable JSON to [FileExchange] (save/share, same as [_exportBackup]) — for when
+  /// the app or the master password can't be relied on to get the data back. Mirrors the web
+  /// app's equivalent (SettingsPage.tsx's `handlePlainExport`).
+  Future<void> _exportPlainJson() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export as Plain JSON?'),
+        content: const Text(
+            'This downloads every credential as PLAIN, UNENCRYPTED text — anyone who gets '
+            'this file can read everything in it. Store it somewhere very safe (e.g. an '
+            'offline encrypted drive) and delete it once you no longer need it.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final session = ref.read(authSessionProvider);
+    final vault = ref.read(vaultProvider).value;
+    if (session == null || vault == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Vault is not unlocked.')));
+      return;
+    }
+
+    final crypto = ref.read(cryptoServiceProvider);
+    var failed = 0;
+    final results = <Map<String, dynamic>>[];
+    for (final item in vault.credentials) {
+      try {
+        final fields = await crypto.decryptCredentialFields(
+          encryptedData: item.encryptedData,
+          dataIv: item.dataIv,
+          encryptedCredentialKey: item.encryptedCredentialKey,
+          privateKey: session.privateKey,
+        );
+        if (fields['customFields'] is String) {
+          try {
+            fields['customFields'] = jsonDecode(fields['customFields'] as String);
+          } catch (_) {
+            // Leave it as the raw string — still readable, just not re-parsed.
+          }
+        }
+
+        final credentialKey =
+            crypto.decryptKeyWithPrivateKey(session.privateKey, item.encryptedCredentialKey);
+        final attachments = <Map<String, dynamic>>[];
+        for (final att in item.attachments) {
+          var name = 'Encrypted file';
+          if (att.fileNameIv != null) {
+            try {
+              name = await crypto.decrypt(credentialKey, att.encryptedFileName, att.fileNameIv!);
+            } catch (_) {
+              // Keep the fallback name rather than failing the whole credential over it.
+            }
+          }
+          attachments.add({
+            'fileName': name,
+            'fileSizeBytes': att.fileSizeBytes,
+            'uploadedAt': att.uploadedAt.toIso8601String(),
+          });
+        }
+
+        results.add({
+          'id': item.id,
+          'type': item.type,
+          'folder': item.folderName,
+          'credentialGroup': item.credentialGroupName,
+          'tags': item.tags.map((t) => t.name).toList(),
+          'expiryDate': item.expiryDate?.toIso8601String(),
+          'createdAt': item.createdAt.toIso8601String(),
+          'updatedAt': item.updatedAt.toIso8601String(),
+          'attachments': attachments,
+          ...fields,
+        });
+      } catch (_) {
+        failed++;
+        results.add(
+            {'id': item.id, 'type': item.type, 'error': 'Failed to decrypt this credential.'});
+      }
+    }
+
+    final bundle = {
+      'warning': 'UNENCRYPTED EXPORT — every field below is plain text. Treat this file like '
+          'the passwords it contains.',
+      'exportedAt': DateTime.now().toIso8601String(),
+      'credentialCount': results.length,
+      'credentials': results,
+    };
+
+    final bytes =
+        Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent('  ').convert(bundle)));
+    final filename =
+        'xcred-plaintext-export-${DateTime.now().toIso8601String().split('T').first}.json';
+    await ref.read(fileExchangeProvider).saveOrShare(filename, bytes, 'application/json');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(failed > 0
+            ? 'Exported ${results.length} credentials ($failed failed to decrypt).'
+            : 'Exported ${results.length} credentials.'),
+      ));
     }
   }
 
@@ -444,6 +591,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                         ),
                                       ),
                                     ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _sectionHeader(context, 'FAILSAFE'),
+                          Card(
+                            color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.25),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Export every credential as plain, UNENCRYPTED JSON — a '
+                                    'last resort for when you can\'t rely on this app or your '
+                                    'master password to get your data back. Only export this '
+                                    'if you have a genuinely secure place to put it.',
+                                    style: TextStyle(
+                                        fontSize: 12, color: Theme.of(context).colorScheme.error),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  OutlinedButton.icon(
+                                    onPressed: _exportPlainJson,
+                                    style: OutlinedButton.styleFrom(
+                                        foregroundColor: Theme.of(context).colorScheme.error),
+                                    icon: const Icon(Icons.warning_amber_outlined, size: 18),
+                                    label: const Text('Export All as Plain JSON'),
                                   ),
                                 ],
                               ),
