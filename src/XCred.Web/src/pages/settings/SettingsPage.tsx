@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, Eye, EyeOff, AlertTriangle, Shield, Bell, User, Download, Upload, CheckCircle2 } from 'lucide-react';
+import { Save, Eye, EyeOff, AlertTriangle, Shield, Bell, User, Download, Upload, CheckCircle2, FileSpreadsheet, FileJson } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { deriveKey, generateSalt, generateKeyPair, encryptPrivateKey, decryptPrivateKey, decryptKeyWithPrivateKey, encryptKeyWithPublicKey, decrypt } from '@/lib/crypto';
 import { encryptCredentialData } from '@/lib/vault';
 import { formatDateTime } from '@/lib/utils';
+import { parseCsv } from '@/lib/csv';
 import RestoreAccountKeysModal from './components/RestoreAccountKeysModal';
+import ImportCsvModal from './components/ImportCsvModal';
 
-type Tab = 'profile' | 'security' | 'notifications' | 'backup' | 'master-key';
+type Tab = 'profile' | 'security' | 'notifications' | 'backup' | 'import' | 'master-key';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -21,6 +23,7 @@ export default function SettingsPage() {
     { key: 'security', label: 'Password', icon: <Shield className="w-4 h-4" /> },
     { key: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
     { key: 'backup', label: 'Backup & Restore', icon: <Download className="w-4 h-4" /> },
+    { key: 'import', label: 'Import', icon: <Upload className="w-4 h-4" /> },
     { key: 'master-key', label: 'Master Password', icon: <AlertTriangle className="w-4 h-4" /> },
   ];
 
@@ -44,6 +47,7 @@ export default function SettingsPage() {
       {tab === 'backup' && (
         <BackupTab privateKey={privateKey} setPublicKey={setPublicKey} setCryptoKeys={setCryptoKeys} />
       )}
+      {tab === 'import' && <ImportTab />}
       {tab === 'master-key' && (
         <ChangeMasterKeyTab
           privateKey={privateKey}
@@ -488,6 +492,154 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
           currentPrivateKey={privateKey}
           onClose={() => { setPendingBackup(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
           onVerified={handleAccountKeysVerified}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Import (CSV, and this app's own plain-JSON export) ────────────────── */
+function ImportTab() {
+  const { publicKey } = useAuthStore();
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
+  const [csvData, setCsvData] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [jsonImporting, setJsonImporting] = useState(false);
+  const [jsonResult, setJsonResult] = useState<{ created: number; skipped: number; failed: number } | null>(null);
+
+  const handleCsvPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+      if (parsed.length === 0) { toast.error('That CSV file is empty.'); return; }
+      setCsvData({ headers: parsed[0], rows: parsed.slice(1) });
+    } catch {
+      toast.error('Failed to read that CSV file.');
+    } finally {
+      if (csvInputRef.current) csvInputRef.current.value = '';
+    }
+  };
+
+  // Reconstructs a payload encryptCredentialData can wrap for each entry produced by this
+  // app's own "Export as Plain JSON" (SettingsPage's BackupTab) — everything BEFORE it hits
+  // the wire again is re-encrypted client-side, exactly like a normal credential save.
+  // Folders/tags/credential groups aren't recreated (only the credential data itself is) —
+  // the export doesn't carry enough to safely reconstruct them (e.g. a folder path could
+  // collide with something already renamed), and getting the actual secrets back is the
+  // point of a failsafe, not perfect organizational fidelity.
+  const handleJsonPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (jsonInputRef.current) jsonInputRef.current.value = '';
+    if (!publicKey) { toast.error('Public key not found. Please log out and log back in.'); return; }
+
+    let entries: any[];
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!Array.isArray(parsed.credentials)) throw new Error('not our format');
+      entries = parsed.credentials;
+    } catch {
+      toast.error('That file doesn\'t look like an XCred plain JSON export.');
+      return;
+    }
+
+    const importable = entries.filter(en => !en.error);
+    if (importable.length === 0) { toast.error('No importable credentials found in that file.'); return; }
+    if (!confirm(
+      `Import ${importable.length} credential${importable.length === 1 ? '' : 's'} from this file? ` +
+      'Each one is re-encrypted with your current keys. Folders, tags, and credential ' +
+      'groups are not recreated — just the credential data itself.'
+    )) return;
+
+    setJsonImporting(true);
+    setJsonResult(null);
+    let created = 0, failed = 0;
+    const META_KEYS = new Set(['id', 'type', 'folder', 'credentialGroup', 'tags', 'expiryDate', 'createdAt', 'updatedAt', 'attachments', 'error']);
+
+    for (const entry of importable) {
+      try {
+        const { customFields, ...rest } = entry;
+        const fields: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rest)) {
+          if (!META_KEYS.has(k)) fields[k] = v;
+        }
+        const payload = { ...fields, name: (fields.name as string) ?? '', customFields: JSON.stringify(customFields ?? []) };
+        const { encryptedData, dataIv, encryptedCredentialKey } = await encryptCredentialData(payload, publicKey);
+        await api.post('/credentials', {
+          type: entry.type,
+          encryptedData, dataIv, encryptedCredentialKey,
+          expiryDate: entry.expiryDate ?? null,
+          folderId: null, credentialGroupId: null, tagIds: [],
+        });
+        created++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setJsonResult({ created, skipped: entries.length - importable.length, failed });
+    setJsonImporting(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+          <h2 className="font-semibold text-slate-800">Import from CSV</h2>
+        </div>
+        <p className="text-sm text-slate-500">
+          Bring in credentials exported from a browser (Chrome/Firefox), another password
+          manager, or your own spreadsheet. You'll map columns and preview before anything is
+          created — each row becomes a Website Login credential.
+        </p>
+        <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvPicked} />
+        <button onClick={() => csvInputRef.current?.click()}
+          className="flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+          <Upload className="w-4 h-4" /> Select CSV File
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <FileJson className="w-5 h-5 text-indigo-600" />
+          <h2 className="font-semibold text-slate-800">Import Plain JSON Export</h2>
+        </div>
+        <p className="text-sm text-slate-500">
+          Re-import a file produced by this app's own "Export as Plain JSON" (Backup &amp;
+          Restore tab) — useful if you moved that data elsewhere and need it back in the vault.
+          Every credential is re-encrypted with your current keys as it's imported.
+        </p>
+        <input ref={jsonInputRef} type="file" accept=".json" className="hidden" onChange={handleJsonPicked} />
+        <button onClick={() => jsonInputRef.current?.click()} disabled={jsonImporting}
+          className="flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-60 transition-colors">
+          <Upload className="w-4 h-4" /> {jsonImporting ? 'Importing…' : 'Select JSON File'}
+        </button>
+
+        {jsonResult && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <p className="font-semibold text-emerald-800">Import Complete</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm text-emerald-700">
+              <span>Created: <b>{jsonResult.created}</b></span>
+              <span>Skipped: <b>{jsonResult.skipped}</b></span>
+              <span>Failed: <b>{jsonResult.failed}</b></span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {csvData && publicKey && (
+        <ImportCsvModal
+          headers={csvData.headers}
+          rows={csvData.rows}
+          publicKey={publicKey}
+          onClose={() => setCsvData(null)}
+          onImported={() => toast.success('CSV import complete — check Credentials for the new entries.')}
         />
       )}
     </div>
