@@ -9,7 +9,7 @@ import api from '@/api/client';
 import { useAuthStore, DEFAULT_ORG_SETTINGS } from '@/store/authStore';
 import { decryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
 import type { FieldDef } from '@/lib/vault';
-import { decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
+import { bytesToBase64, decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { computeFieldLink, openSmartLink, linkTooltip, networkDeviceLink } from '@/lib/links';
@@ -177,7 +177,7 @@ export default function CredentialDetailPage() {
 
       for (const file of Array.from(files)) {
         const arrayBuffer = await file.arrayBuffer();
-        const fileBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const fileBase64 = bytesToBase64(new Uint8Array(arrayBuffer));
 
         const { ciphertext: encryptedData, iv: dataIv } = await encrypt(credentialKey, fileBase64);
         const { ciphertext: encryptedFileName, iv: fileNameIv } = await encrypt(credentialKey, file.name);
@@ -197,7 +197,8 @@ export default function CredentialDetailPage() {
       }
 
       await loadCred();
-    } catch {
+    } catch (err) {
+      console.error('Attachment upload failed', err);
       toast.error('Failed to upload attachment.');
     } finally {
       setUploading(false);
@@ -231,7 +232,8 @@ export default function CredentialDetailPage() {
       const a = document.createElement('a');
       a.href = url; a.download = fileName; a.click();
       URL.revokeObjectURL(url);
-    } catch {
+    } catch (err) {
+      console.error('Attachment download failed', err);
       toast.error('Failed to download attachment.');
     }
   };

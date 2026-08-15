@@ -2,6 +2,20 @@
 // Argon2id would be stronger but requires WASM not yet compatible with Vite 6.
 // This is a deliberate, documented trade-off. Migrate to Argon2id when tooling matures.
 
+// Spreading a whole typed array into String.fromCharCode(...) passes every byte as its own
+// function argument — past roughly tens of KB this exceeds the JS engine's max-call-arguments
+// limit and throws RangeError: Maximum call stack size exceeded. That's silent-fatal for
+// anything encrypting more than a few KB (e.g. file attachments), so encode in fixed-size
+// chunks instead of a single spread call.
+export function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000; // 32KB — comfortably under any engine's argument-count ceiling
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 export async function deriveKey(masterPassword: string, salt: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const saltBytes = Uint8Array.from(atob(salt), c => c.charCodeAt(0));
@@ -18,7 +32,7 @@ export async function deriveKey(masterPassword: string, salt: string): Promise<C
 
 // Generate a random 256-bit salt (base64-encoded)
 export function generateSalt(): string {
-  return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+  return bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
 }
 
 // AES-256-GCM encrypt — returns { ciphertext: base64, iv: base64 }
@@ -27,8 +41,8 @@ export async function encrypt(key: CryptoKey, plaintext: string): Promise<{ ciph
   const encoded = new TextEncoder().encode(plaintext);
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
   return {
-    ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
-    iv: btoa(String.fromCharCode(...iv)),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+    iv: bytesToBase64(iv),
   };
 }
 
@@ -51,8 +65,8 @@ export async function generateKeyPair(): Promise<{ publicKey: string; privateKey
   const publicKeyBuffer = await crypto.subtle.exportKey('spki', keyPair.publicKey);
   const privateKeyBuffer = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
   return {
-    publicKey: btoa(String.fromCharCode(...new Uint8Array(publicKeyBuffer))),
-    privateKey: btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer))),
+    publicKey: bytesToBase64(new Uint8Array(publicKeyBuffer)),
+    privateKey: bytesToBase64(new Uint8Array(privateKeyBuffer)),
   };
 }
 
@@ -77,7 +91,7 @@ export async function generateCredentialKey(): Promise<CryptoKey> {
 // Export a CryptoKey to base64
 export async function exportKey(key: CryptoKey): Promise<string> {
   const raw = await crypto.subtle.exportKey('raw', key);
-  return btoa(String.fromCharCode(...new Uint8Array(raw)));
+  return bytesToBase64(new Uint8Array(raw));
 }
 
 // Import a base64 AES key
@@ -92,7 +106,7 @@ export async function encryptKeyWithPublicKey(publicKeyB64: string, aesKey: Cryp
   const publicKey = await crypto.subtle.importKey('spki', publicKeyBytes, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
   const rawKey = await crypto.subtle.exportKey('raw', aesKey);
   const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, rawKey);
-  return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+  return bytesToBase64(new Uint8Array(encrypted));
 }
 
 // Decrypt a credential key with RSA private key
