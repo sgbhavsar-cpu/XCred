@@ -549,7 +549,7 @@ This enables HTTPS in dev without any manual certificate management.
 |-----------|-------|
 | Runtime | Self-contained single-file executable (`win-x64`) — bundles the .NET runtime, no separate install required |
 | Database | SQLite (§17.0), a single file stored next to the application |
-| Web Server | Kestrel only, listening directly on `http://localhost:5080` — no IIS |
+| Web Server | Kestrel only, listening directly on `http://localhost:1507` — no IIS |
 | Distribution | Unzip anywhere and run `Start-XCred.bat`; the app opens in the default browser |
 | Background operation | Optional one-time `Install-Service.ps1` registers XCred as a Windows Service (`XCredVault`) so it survives closing the console window or logging out; `Uninstall-Service.ps1` reverses this |
 | Environment Config | `appsettings.Portable.json`, baked into the published output as the sole `appsettings.json` — no environment variables required |

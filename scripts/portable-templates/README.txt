@@ -7,7 +7,7 @@ QUICK START
 -----------
 1. Unzip this folder anywhere (a USB drive, Desktop, wherever).
 2. Double-click Start-XCred.bat.
-3. Your browser opens automatically to http://localhost:5080.
+3. Your browser opens automatically to http://localhost:1507.
 4. Register your first account - it automatically becomes the admin account.
 
 That's it. Your data is stored in the app\data folder, right next to the app.
@@ -42,8 +42,8 @@ the WHOLE instance (every user) and is meant for admins moving/cloning the entir
 
 TROUBLESHOOTING
 ----------------
-- "Port 5080 already in use": edit app\appsettings.json's Kestrel/Urls setting to a
-  different port (e.g. http://localhost:5090), or stop whatever else is using 5080.
+- "Port 1507 already in use": edit app\appsettings.json's Kestrel/Urls setting to a
+  different port (e.g. http://localhost:1508), or stop whatever else is using 1507.
 - Logs are written to the logs\ folder next to XCred.Api.exe.
 - Your database is app\data\xcred.db - back that file up directly if you'd rather not use
   the System Backup zip feature (it's a complete, single-file copy of everything).

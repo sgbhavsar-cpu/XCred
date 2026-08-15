@@ -37,5 +37,5 @@ New-Service -Name $serviceName `
 
 Start-Service -Name $serviceName
 Write-Host "`nDone. XCred is now running in the background and will start automatically on boot." -ForegroundColor Green
-Write-Host "Open http://localhost:5080 in your browser." -ForegroundColor Green
+Write-Host "Open http://localhost:1507 in your browser." -ForegroundColor Green
 Write-Host "To stop/remove it later, run Uninstall-Service.ps1 as Administrator." -ForegroundColor Green

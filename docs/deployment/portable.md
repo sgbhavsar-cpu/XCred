@@ -29,7 +29,7 @@ publish-portable/
 └── app/
     ├── XCred.Api.exe       <- self-contained, ~60MB, bundles the .NET runtime
     ├── wwwroot/            <- the React SPA
-    ├── appsettings.json    <- SQLite provider, port 5080, pre-configured
+    ├── appsettings.json    <- SQLite provider, port 1507, pre-configured
     └── data/                <- the SQLite database lives here once the app has run
 ```
 
@@ -42,7 +42,7 @@ Zip the whole `publish-portable/` folder to distribute it.
 1. Unzip the folder anywhere — a Desktop, a USB drive, wherever.
 2. Double-click `Start-XCred.bat`.
 3. A console window opens and starts XCred; your browser opens automatically to
-   `http://localhost:5080` once it's ready.
+   `http://localhost:1507` once it's ready.
 4. Register the first account — it automatically becomes the Admin account, same as the
    hosted deployment.
 
@@ -97,10 +97,10 @@ person's credentials.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| "Port 5080 already in use" | Something else is already listening on 5080 | Edit `app\appsettings.json` → `Urls`, change the port (e.g. `http://localhost:5090`), then restart |
-| Browser doesn't open automatically | Default browser association issue | Open `http://localhost:5080` manually |
+| "Port 1507 already in use" | Something else is already listening on 1507 | Edit `app\appsettings.json` → `Urls`, change the port (e.g. `http://localhost:1508`), then restart |
+| Browser doesn't open automatically | Default browser association issue | Open `http://localhost:1507` manually |
 | Data seems to have disappeared after moving the folder | The `app\data` folder wasn't included in the copy/zip | Always move or zip the whole `publish-portable` folder together, including `app\data` |
-| Service won't start (`Install-Service.ps1`) | Something already listening on 5080, or the service account can't reach the `app` folder | Check `logs\` next to `XCred.Api.exe`; confirm the folder wasn't moved after installing the service (the service points at the path it was installed from) |
+| Service won't start (`Install-Service.ps1`) | Something already listening on 1507, or the service account can't reach the `app` folder | Check `logs\` next to `XCred.Api.exe`; confirm the folder wasn't moved after installing the service (the service points at the path it was installed from) |
 | Want to inspect/back up the raw database directly | — | `app\data\xcred.db` is a complete, single-file SQLite database — copy it directly as an alternative to the System Backup zip |
 
 Logs are written to `logs\` next to `XCred.Api.exe`.
