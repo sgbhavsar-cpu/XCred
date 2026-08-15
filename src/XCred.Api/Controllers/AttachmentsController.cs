@@ -16,6 +16,13 @@ namespace XCred.Api.Controllers;
 [Route("api/credentials/{credentialId:guid}/attachments")]
 public class AttachmentsController(AppDbContext db, IAuditService audit, IAppSettingService settings) : ControllerBase
 {
+    // The global Kestrel MaxRequestBodySize (Program.cs) is 15MB, sized for ordinary JSON
+    // requests. An attachment's base64-encoded ciphertext runs ~33% larger than the raw file,
+    // so the admin-configurable MaxAttachmentSizeMb setting below (no upper bound enforced on
+    // it) could exceed the global cap and get rejected by Kestrel before this action's own,
+    // clearer FILE_TOO_LARGE check ever runs. Override it here so the app's own size check —
+    // not an unrelated transport-level default — is what actually governs this endpoint.
+    [RequestSizeLimit(209_715_200)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<AttachmentDto>>> Upload(Guid credentialId, [FromBody] UploadAttachmentRequest req)
     {

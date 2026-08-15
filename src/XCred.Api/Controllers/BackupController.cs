@@ -71,7 +71,9 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
                 {
                     Id = a.Id,
                     EncryptedFileName = a.EncryptedFileName,
+                    FileNameIv = a.FileNameIv,
                     EncryptedMimeType = a.EncryptedMimeType,
+                    MimeTypeIv = a.MimeTypeIv,
                     EncryptedData = a.EncryptedData,
                     DataIv = a.DataIv,
                     FileSizeBytes = a.FileSizeBytes
@@ -193,7 +195,9 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
                 {
                     CredentialId = cred.Id,
                     EncryptedFileName = ba.EncryptedFileName,
+                    FileNameIv = ba.FileNameIv,
                     EncryptedMimeType = ba.EncryptedMimeType,
+                    MimeTypeIv = ba.MimeTypeIv,
                     EncryptedData = ba.EncryptedData,
                     DataIv = ba.DataIv,
                     FileSizeBytes = ba.FileSizeBytes,
@@ -259,7 +263,9 @@ public class BackupAttachment
 {
     public Guid Id { get; set; }
     public string EncryptedFileName { get; set; } = string.Empty;
+    public string FileNameIv { get; set; } = string.Empty;
     public string EncryptedMimeType { get; set; } = string.Empty;
+    public string MimeTypeIv { get; set; } = string.Empty;
     public string EncryptedData { get; set; } = string.Empty;
     public string DataIv { get; set; } = string.Empty;
     public long FileSizeBytes { get; set; }
