@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, RefreshCw, FolderOpen, ArrowLeft, X,
   ChevronDown, ChevronRight, Boxes, Settings, Trash2,
 } from 'lucide-react';
-import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
 import api from '@/api/client';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import { useCredentialDnd } from '@/hooks/useCredentialDnd';
@@ -139,7 +139,8 @@ export default function CredentialsPage() {
   });
   const clearSelection = () => setSelectedIds(new Set());
 
-  const { sensors, activeDragId, handleDragStart, handleDragEnd } = useCredentialDnd(async (credId, groupId) => {
+  const { sensors, active, handleDragStart, handleDragEnd } = useCredentialDnd(async (kind, credId, groupId) => {
+    if (kind !== 'cred') return; // this page only drags credentials, never folders
     const cred = credentials.find(c => c.id === credId);
     if (cred && cred.credentialGroupId === groupId) return;
     try {
@@ -323,7 +324,10 @@ export default function CredentialsPage() {
           )}
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        /* pointerWithin, not dnd-kit's default rectIntersection — see FoldersPage's DndContext
+           for why: overlap-area detection favors whichever drop zone is bigger, not whichever
+           the cursor is actually over, once zones of very different sizes sit close together. */
+        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
             {visibleGroups.map(group => {
               const members = byGroup.get(group.id) ?? [];
@@ -402,9 +406,9 @@ export default function CredentialsPage() {
           </div>
 
           <DragOverlay>
-            {activeDragId && (
+            {active && (
               <div className="flex items-center gap-2 bg-white border border-indigo-300 shadow-lg rounded-lg px-4 py-2.5 text-sm font-medium text-slate-800">
-                {credentialTypeLabel(credentials.find(c => c.id === activeDragId)?.type ?? '')}: {decrypted.get(activeDragId)?.name ?? 'Credential'}
+                {credentialTypeLabel(credentials.find(c => c.id === active.id)?.type ?? '')}: {decrypted.get(active.id)?.name ?? 'Credential'}
               </div>
             )}
           </DragOverlay>

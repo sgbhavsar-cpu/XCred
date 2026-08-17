@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import api from '@/api/client';
 import { cn, credentialTypeLabel } from '@/lib/utils';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
@@ -68,12 +68,38 @@ export default function FoldersPage() {
 
   const updateFolder = async (id: string) => {
     if (!editName.trim()) return;
+    // Must resend the folder's current parentFolderId/sortOrder too, not just the new name —
+    // the API takes a full replace, so omitting them would silently un-nest this folder and
+    // reset its sort position on every rename.
+    const current = folderById(folders).get(id);
     try {
-      await api.put(`/folders/${id}`, { name: editName.trim() });
+      await api.put(`/folders/${id}`, {
+        name: editName.trim(),
+        parentFolderId: current?.parentFolderId ?? null,
+        sortOrder: current?.sortOrder ?? 0,
+      });
       await loadFolders();
       setEditingId(null);
       toast.success('Folder renamed.');
     } catch { toast.error('Failed to rename.'); }
+  };
+
+  const moveFolder = async (id: string, newParentId: string | null) => {
+    const byId = folderById(folders);
+    const current = byId.get(id);
+    if (!current) return;
+    if (current.parentFolderId === newParentId) return; // already there
+    if (newParentId && isDescendant(current, newParentId)) {
+      toast.error('Cannot move a folder into its own subtree.');
+      return;
+    }
+    try {
+      await api.put(`/folders/${id}`, { name: current.name, parentFolderId: newParentId, sortOrder: current.sortOrder });
+      await loadFolders();
+      toast.success(newParentId ? 'Folder moved.' : 'Moved to top level.');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message ?? 'Failed to move folder.');
+    }
   };
 
   const deleteFolder = async (id: string) => {
@@ -107,12 +133,16 @@ export default function FoldersPage() {
     } catch { toast.error('Failed to delete.'); }
   };
 
-  const { sensors, activeDragId, handleDragStart, handleDragEnd } = useCredentialDnd(async (credId, folderId) => {
-    const cred = credentials.find(c => c.id === credId);
-    if (cred && cred.folderId === folderId) return;
+  const { sensors, active, handleDragStart, handleDragEnd } = useCredentialDnd(async (kind, dragId, targetId) => {
+    if (kind === 'folder') {
+      await moveFolder(dragId, targetId);
+      return;
+    }
+    const cred = credentials.find(c => c.id === dragId);
+    if (cred && cred.folderId === targetId) return;
     try {
-      await bulkAssign([credId], { updateFolder: true, folderId });
-      toast.success(folderId ? 'Moved to folder.' : 'Removed from folder.');
+      await bulkAssign([dragId], { updateFolder: true, folderId: targetId });
+      toast.success(targetId ? 'Moved to folder.' : 'Removed from folder.');
     } catch { toast.error('Failed to move credential.'); }
   });
 
@@ -187,7 +217,29 @@ export default function FoldersPage() {
           <button onClick={() => setCreating(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first folder →</button>
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        // pointerWithin, not dnd-kit's default rectIntersection: the "move to top level" zone
+        // sits right above the (much taller) folder tree, so overlap-area-based detection would
+        // keep resolving to the tree underneath even once the cursor is past the boundary.
+        // Pointer-position-based detection follows the cursor itself instead.
+        <DndContext sensors={sensors} collisionDetection={pointerWithin}
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+          onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          {/* Always mounted, same size, at all times (never conditionally rendered/resized) —
+              even just appearing or changing height right as a folder drag starts would shift
+              every row below it down, moving each folder's actual position out from under
+              wherever the drag interaction (or a test) had already measured it a moment
+              earlier. Toggling opacity/pointer-events/border color instead keeps layout — and
+              therefore every row's position — completely stable through the whole drag. */}
+          <DroppableRow id="root" testId="folder-root-drop-zone"
+            className={cn(
+              'flex items-center gap-2 px-5 py-3 mb-3 rounded-lg border-2 border-dashed text-sm transition-opacity',
+              active?.kind === 'folder'
+                ? 'border-slate-300 text-slate-500 opacity-100'
+                : 'border-transparent text-transparent opacity-0 pointer-events-none select-none',
+            )}>
+            <CornerLeftUp className="w-4 h-4 shrink-0" /> Drop here to move to the top level
+          </DroppableRow>
+
           <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
             {folders.length > 0 && (
               <FolderTree
@@ -229,9 +281,14 @@ export default function FoldersPage() {
           </div>
 
           <DragOverlay>
-            {activeDragId && (
+            {active?.kind === 'folder' && (
               <div className="flex items-center gap-2 bg-white border border-indigo-300 shadow-lg rounded-lg px-4 py-2.5 text-sm font-medium text-slate-800">
-                {credentialTypeLabel(credentials.find(c => c.id === activeDragId)?.type ?? '')}: {decrypted.get(activeDragId)?.name ?? 'Credential'}
+                <FolderIcon className="w-4 h-4 text-amber-500" /> {folderById(folders).get(active.id)?.name ?? 'Folder'}
+              </div>
+            )}
+            {active?.kind === 'cred' && (
+              <div className="flex items-center gap-2 bg-white border border-indigo-300 shadow-lg rounded-lg px-4 py-2.5 text-sm font-medium text-slate-800">
+                {credentialTypeLabel(credentials.find(c => c.id === active.id)?.type ?? '')}: {decrypted.get(active.id)?.name ?? 'Credential'}
               </div>
             )}
           </DragOverlay>
@@ -246,13 +303,25 @@ export default function FoldersPage() {
   );
 }
 
-function DroppableRow({ id, onClick, className, children }: {
-  id: string; onClick?: () => void; className: string; children: React.ReactNode;
+function DroppableRow({ id, dragId, onClick, className, children, testId }: {
+  id: string; dragId?: string; onClick?: () => void; className: string; children: React.ReactNode; testId?: string;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `drop:${id}` });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `drop:${id}` });
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: dragId ?? `__nodrag__${id}`,
+    disabled: !dragId,
+  });
+  const setNodeRef = (node: HTMLElement | null) => { setDropRef(node); setDragRef(node); };
   return (
-    <div ref={setNodeRef} onClick={onClick}
-      className={cn(className, isOver && 'ring-2 ring-inset ring-indigo-400 bg-indigo-50/60')}>
+    <div ref={setNodeRef} onClick={onClick} data-testid={testId}
+      className={cn(className, isOver && 'ring-2 ring-inset ring-indigo-400 bg-indigo-50/60', isDragging && 'opacity-40')}>
+      {dragId && (
+        <button type="button" {...attributes} {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="shrink-0 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing touch-none" title="Drag to move">
+          <GripVertical className="w-4 h-4" />
+        </button>
+      )}
       {children}
     </div>
   );
@@ -282,7 +351,8 @@ function FolderTree({
         const isEditing = editingId === folder.id;
         return (
           <div key={folder.id}>
-            <DroppableRow id={folder.id} onClick={() => !isEditing && toggleExpand(folder.id)}
+            <DroppableRow id={folder.id} dragId={isEditing ? undefined : `folder:${folder.id}`}
+              onClick={() => !isEditing && toggleExpand(folder.id)}
               className={cn('flex items-center gap-3 px-5 py-3.5', depth > 0 && 'bg-slate-50/60', !isEditing && 'cursor-pointer hover:bg-slate-50 transition-colors')}>
               {depth > 0 && <div style={{ width: Math.min(depth, 4) * 20 }} className="shrink-0" />}
               {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
@@ -377,4 +447,19 @@ function flattenFolderList(folders: FolderItem[], prefix = ''): Array<{ id: stri
     if (f.children.length) result.push(...flattenFolderList(f.children, prefix + f.name + ' / '));
   }
   return result;
+}
+
+function folderById(folders: FolderItem[]): Map<string, FolderItem> {
+  const map = new Map<string, FolderItem>();
+  (function index(list: FolderItem[]) {
+    for (const f of list) { map.set(f.id, f); index(f.children); }
+  })(folders);
+  return map;
+}
+
+/** True if candidateId is folder itself or anywhere in its subtree — used to block dropping a
+ *  folder onto one of its own descendants, which would otherwise create a cycle in the tree. */
+function isDescendant(folder: FolderItem, candidateId: string): boolean {
+  if (folder.id === candidateId) return true;
+  return folder.children.some(child => isDescendant(child, candidateId));
 }

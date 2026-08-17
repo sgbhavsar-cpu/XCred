@@ -69,6 +69,32 @@ public class FoldersController(AppDbContext db) : ControllerBase
         var folder = await db.Folders.FirstOrDefaultAsync(f => f.Id == id && f.OwnerId == userId);
         if (folder == null) return NotFound(ApiResponse<FolderDto>.Fail("NOT_FOUND", "Folder not found."));
 
+        if (req.ParentFolderId.HasValue && req.ParentFolderId != folder.ParentFolderId)
+        {
+            if (req.ParentFolderId.Value == id)
+                return BadRequest(ApiResponse<FolderDto>.Fail("INVALID_PARENT", "A folder cannot be its own parent."));
+
+            var newParent = await db.Folders.FirstOrDefaultAsync(f => f.Id == req.ParentFolderId && f.OwnerId == userId);
+            if (newParent == null)
+                return BadRequest(ApiResponse<FolderDto>.Fail("INVALID_PARENT", "Parent folder not found."));
+
+            // Walk up from the proposed parent toward the root; if this folder itself turns up
+            // anywhere in that chain, the move would make it its own descendant (a cycle) —
+            // e.g. dragging a folder onto one of its own children. The client also guards
+            // against this before calling, but the server is the real source of truth.
+            var allFolders = await db.Folders.AsNoTracking().Where(f => f.OwnerId == userId).ToListAsync();
+            var byId = allFolders.ToDictionary(f => f.Id);
+            var visited = new HashSet<Guid>();
+            var cursor = (Folder?)newParent;
+            while (cursor != null)
+            {
+                if (cursor.Id == id)
+                    return BadRequest(ApiResponse<FolderDto>.Fail("INVALID_PARENT", "Cannot move a folder into its own subtree."));
+                if (!visited.Add(cursor.Id)) break; // defensive: bail out if data already had a cycle
+                cursor = cursor.ParentFolderId.HasValue && byId.TryGetValue(cursor.ParentFolderId.Value, out var p) ? p : null;
+            }
+        }
+
         folder.Name = req.Name.Trim();
         folder.ParentFolderId = req.ParentFolderId;
         folder.SortOrder = req.SortOrder;
