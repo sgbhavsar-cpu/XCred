@@ -22,6 +22,10 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         var userId = GetUserId();
         var credentials = await db.Credentials
             .AsNoTracking()
+            .AsSplitQuery() // 3 collection Includes (tags/attachments/shares) in one query would
+                            // otherwise JOIN into a single result set whose row count is their
+                            // PRODUCT per credential, not their sum — correct to avoid regardless
+                            // of workload size.
             .Where(c => c.OwnerId == userId)
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
             .Include(c => c.Attachments)
@@ -41,6 +45,7 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         var userId = GetUserId();
         var cred = await db.Credentials
             .AsNoTracking()
+            .AsSplitQuery() // see GetAll's comment on the same pattern
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
@@ -97,6 +102,7 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         await audit.LogAsync(userId, AuditActions.CredentialCreated, "Credential", cred.Id, req.Type, GetIp());
 
         var created = await db.Credentials
+            .AsSplitQuery() // see GetAll's comment on the same pattern
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
@@ -158,6 +164,7 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         await audit.LogAsync(userId, AuditActions.CredentialUpdated, "Credential", id, cred.Type, GetIp());
 
         var updated = await db.Credentials
+            .AsSplitQuery() // see GetAll's comment on the same pattern
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
             .Include(c => c.Attachments)
             .Include(c => c.Owner)
@@ -167,6 +174,58 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
             .FirstAsync(c => c.Id == id);
 
         return Ok(ApiResponse<CredentialDto>.Ok(MapToDto(updated)));
+    }
+
+    // Metadata-only reassignment (folder/group) for drag-and-drop and multi-select bulk edit.
+    // Deliberately separate from Update(): it never touches EncryptedData/DataIv/
+    // EncryptedCredentialKey, so — unlike Update() — it does NOT revoke "until changed"
+    // shares. That revocation exists because Update() can rotate the actual secret; moving a
+    // credential to a different folder isn't a secret change and shouldn't invalidate shares.
+    [HttpPatch("bulk-assign")]
+    public async Task<ActionResult<ApiResponse<BulkAssignResultDto>>> BulkAssign([FromBody] BulkAssignRequest req)
+    {
+        var userId = GetUserId();
+
+        if (req.CredentialIds.Count == 0)
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CREDENTIALS", "No credentials selected."));
+
+        if (!req.UpdateFolder && !req.UpdateCredentialGroup)
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CHANGE", "Nothing to update."));
+
+        if (req.UpdateFolder && !await IsFolderAccessibleAsync(req.FolderId, userId))
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("INVALID_FOLDER", "Folder not found or not accessible."));
+
+        if (req.UpdateCredentialGroup && !await IsCredentialGroupAccessibleAsync(req.CredentialGroupId, userId))
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("INVALID_CREDENTIAL_GROUP", "Credential group not found or not accessible."));
+
+        var creds = await db.Credentials
+            .Where(c => req.CredentialIds.Contains(c.Id) && c.OwnerId == userId)
+            .ToListAsync();
+
+        foreach (var cred in creds)
+        {
+            if (req.UpdateFolder) cred.FolderId = req.FolderId;
+            if (req.UpdateCredentialGroup) cred.CredentialGroupId = req.CredentialGroupId;
+            cred.UpdatedAt = DateTime.UtcNow;
+            cred.UpdatedById = userId;
+        }
+
+        await db.SaveChangesAsync();
+
+        var what = (req.UpdateFolder, req.UpdateCredentialGroup) switch
+        {
+            (true, true) => "folder and credential group",
+            (true, false) => "folder",
+            _ => "credential group"
+        };
+        await audit.LogAsync(userId, AuditActions.CredentialsBulkAssigned, "Credential", null,
+            $"Reassigned {what} for {creds.Count} credential(s)", GetIp());
+
+        return Ok(ApiResponse<BulkAssignResultDto>.Ok(new BulkAssignResultDto
+        {
+            Updated = creds.Count,
+            Skipped = req.CredentialIds.Count - creds.Count
+        }));
     }
 
     [HttpDelete("{id:guid}")]

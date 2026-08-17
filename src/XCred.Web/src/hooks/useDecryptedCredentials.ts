@@ -66,5 +66,18 @@ export function useDecryptedCredentials() {
     setCredentials(prev => prev.filter(c => c.id !== id));
   };
 
-  return { credentials, decrypted, loading, refetch, deleteCredential };
+  /** Reassigns folder and/or credential group for one or many credentials in a single call —
+   *  used by both drag-and-drop (one id) and the multi-select bulk-edit toolbar (many ids).
+   *  Folder/group are independent: pass updateFolder/updateCredentialGroup to say which one(s)
+   *  this call should touch, with folderId/credentialGroupId `null` meaning "unassign". */
+  const bulkAssign = async (ids: string[], changes: {
+    updateFolder?: boolean; folderId?: string | null;
+    updateCredentialGroup?: boolean; credentialGroupId?: string | null;
+  }) => {
+    const res = await api.patch('/credentials/bulk-assign', { credentialIds: ids, ...changes });
+    await refetch();
+    return res.data.data as { updated: number; skipped: number };
+  };
+
+  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign };
 }

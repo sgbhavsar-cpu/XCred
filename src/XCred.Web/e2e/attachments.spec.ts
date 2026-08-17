@@ -2,13 +2,12 @@ import { test, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { login, fillTypeFields, goToNewCredentialForm } from './helpers';
+import { login, registerAndLoginFreshUser, fillTypeFields, goToNewCredentialForm } from './helpers';
 import { CREDENTIAL_FIELDS } from '../src/lib/vault';
 
 test.describe('Attachments', () => {
-  test.beforeEach(async ({ page }) => { await login(page); });
-
   test('uploaded file shows its real name and downloads with the original name/content intact', async ({ page }) => {
+    await login(page);
     const seed = Date.now();
     const name = `E2E Attachment Test ${seed}`;
     const fileName = `xcred-e2e-${seed}.txt`;
@@ -55,12 +54,17 @@ test.describe('Attachments', () => {
   // the JS engine's max-call-arguments limit and throws, silently swallowed by a bare catch{}.
   // A 122KB Word-doc-sized file reliably triggered it; anything under ~64KB (like the small
   // text file above) happened to stay under the threshold, which is why it went unnoticed.
+  //
+  // Uses a fresh throwaway account, not the shared admin one: these attachments are 122KB and
+  // 4.5MB each, and with no cleanup between runs the shared admin account would accumulate a
+  // few more MB of CredentialAttachments every single time this suite runs, forever.
   for (const { label, sizeBytes, ext, magic } of [
     { label: '122KB', sizeBytes: 122 * 1024 + 512, ext: 'docx', magic: 'PK\x03\x04' },
     { label: '4.5MB', sizeBytes: Math.floor(4.5 * 1024 * 1024), ext: 'pdf', magic: '%PDF-1.7' },
   ]) {
-    test(`${label} binary file uploads and downloads with content intact`, async ({ page }) => {
+    test(`${label} binary file uploads and downloads with content intact`, async ({ page, request }) => {
       test.setTimeout(90_000);
+      await registerAndLoginFreshUser(page, request, `attach${label.replace(/[^a-z0-9]/gi, '')}`);
       const seed = Date.now();
       const name = `E2E Large Attachment ${label} ${seed}`;
       const fileName = `xcred-e2e-${label}-${seed}.${ext}`;

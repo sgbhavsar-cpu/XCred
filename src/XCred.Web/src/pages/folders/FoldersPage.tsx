@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { DndContext, DragOverlay, useDroppable } from '@dnd-kit/core';
 import api from '@/api/client';
-import { cn } from '@/lib/utils';
+import { cn, credentialTypeLabel } from '@/lib/utils';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
+import { useCredentialDnd } from '@/hooks/useCredentialDnd';
 import CredentialRow from '@/components/CredentialRow';
+import SelectionToolbar from '@/components/SelectionToolbar';
+import BulkEditModal from '@/components/BulkEditModal';
 
 interface FolderItem {
   id: string;
@@ -17,18 +21,23 @@ interface FolderItem {
   children: FolderItem[];
 }
 
+interface CredGroupOption { id: string; name: string }
+
 export default function FoldersPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign } = useDecryptedCredentials();
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
+  const [groups, setGroups] = useState<CredGroupOption[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const loadFolders = async () => {
     setFoldersLoading(true);
@@ -38,7 +47,14 @@ export default function FoldersPage() {
     } finally { setFoldersLoading(false); }
   };
 
-  useEffect(() => { loadFolders(); }, []);
+  const loadGroups = async () => {
+    try {
+      const res = await api.get('/credential-groups');
+      setGroups(res.data.data);
+    } catch { /* the bulk-edit group picker just stays empty; not worth a toast */ }
+  };
+
+  useEffect(() => { loadFolders(); loadGroups(); }, []);
 
   const createFolder = async () => {
     if (!newName.trim()) return;
@@ -75,6 +91,13 @@ export default function FoldersPage() {
     return next;
   });
 
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+
   const handleDeleteCredential = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this credential? This cannot be undone.')) return;
@@ -84,9 +107,30 @@ export default function FoldersPage() {
     } catch { toast.error('Failed to delete.'); }
   };
 
+  const { sensors, activeDragId, handleDragStart, handleDragEnd } = useCredentialDnd(async (credId, folderId) => {
+    const cred = credentials.find(c => c.id === credId);
+    if (cred && cred.folderId === folderId) return;
+    try {
+      await bulkAssign([credId], { updateFolder: true, folderId });
+      toast.success(folderId ? 'Moved to folder.' : 'Removed from folder.');
+    } catch { toast.error('Failed to move credential.'); }
+  });
+
+  const applyBulkEdit = async (changes: Parameters<typeof bulkAssign>[1]) => {
+    try {
+      const result = await bulkAssign(Array.from(selectedIds), changes);
+      toast.success(`Updated ${result.updated} credential${result.updated !== 1 ? 's' : ''}.`);
+      clearSelection();
+      setShowBulkEdit(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
+    }
+  };
+
   const byFolder = new Map<string, CredentialListItem[]>();
+  const unassigned: CredentialListItem[] = [];
   for (const c of credentials) {
-    if (!c.folderId) continue;
+    if (!c.folderId) { unassigned.push(c); continue; }
     if (!byFolder.has(c.folderId)) byFolder.set(c.folderId, []);
     byFolder.get(c.folderId)!.push(c);
   }
@@ -94,8 +138,10 @@ export default function FoldersPage() {
   const flatFolders = flattenFolderList(folders);
   const loading = foldersLoading || credsLoading;
 
+  const nothingAtAll = folders.length === 0 && unassigned.length === 0;
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Folders</h1>
@@ -130,30 +176,84 @@ export default function FoldersPage() {
         </div>
       )}
 
+      <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
-      ) : folders.length === 0 ? (
+      ) : nothingAtAll ? (
         <div className="text-center py-16 text-slate-400">
           <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No folders yet.</p>
           <button onClick={() => setCreating(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first folder →</button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-          <FolderTree
-            folders={folders} depth={0}
-            byFolder={byFolder} decrypted={decrypted}
-            expanded={expanded} toggleExpand={toggleExpand}
-            editingId={editingId} editName={editName}
-            setEditingId={setEditingId} setEditName={setEditName}
-            onUpdate={updateFolder} onDelete={deleteFolder}
-            onAddCredential={id => navigate(`/credentials/new?folderId=${id}&returnTo=${encodeURIComponent('/folders')}`)}
-            onOpenCredential={id => navigate(`/credentials/${id}`)}
-            onDeleteCredential={handleDeleteCredential}
-            onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
-          />
-        </div>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+            {folders.length > 0 && (
+              <FolderTree
+                folders={folders} depth={0}
+                byFolder={byFolder} decrypted={decrypted}
+                expanded={expanded} toggleExpand={toggleExpand}
+                editingId={editingId} editName={editName}
+                setEditingId={setEditingId} setEditName={setEditName}
+                onUpdate={updateFolder} onDelete={deleteFolder}
+                onAddCredential={id => navigate(`/credentials/new?folderId=${id}&returnTo=${encodeURIComponent('/folders')}`)}
+                onOpenCredential={id => navigate(`/credentials/${id}`)}
+                onDeleteCredential={handleDeleteCredential}
+                onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                selectedIds={selectedIds} onToggleSelect={toggleSelect}
+              />
+            )}
+
+            {unassigned.length > 0 && (
+              <div>
+                {folders.length > 0 && (
+                  <DroppableRow id="unassigned" className="px-5 py-2 bg-slate-50">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Unassigned</p>
+                  </DroppableRow>
+                )}
+                <div className="divide-y divide-slate-100">
+                  {unassigned.map(cred => (
+                    <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
+                      onOpen={() => navigate(`/credentials/${cred.id}`)}
+                      onDelete={e => handleDeleteCredential(cred.id, e)}
+                      onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                      draggable selectable
+                      selected={selectedIds.has(cred.id)}
+                      onToggleSelect={() => toggleSelect(cred.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DragOverlay>
+            {activeDragId && (
+              <div className="flex items-center gap-2 bg-white border border-indigo-300 shadow-lg rounded-lg px-4 py-2.5 text-sm font-medium text-slate-800">
+                {credentialTypeLabel(credentials.find(c => c.id === activeDragId)?.type ?? '')}: {decrypted.get(activeDragId)?.name ?? 'Credential'}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
       )}
+
+      {showBulkEdit && (
+        <BulkEditModal count={selectedIds.size} folders={flatFolders} groups={groups}
+          onApply={applyBulkEdit} onClose={() => setShowBulkEdit(false)} />
+      )}
+    </div>
+  );
+}
+
+function DroppableRow({ id, onClick, className, children }: {
+  id: string; onClick?: () => void; className: string; children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `drop:${id}` });
+  return (
+    <div ref={setNodeRef} onClick={onClick}
+      className={cn(className, isOver && 'ring-2 ring-inset ring-indigo-400 bg-indigo-50/60')}>
+      {children}
     </div>
   );
 }
@@ -162,6 +262,7 @@ function FolderTree({
   folders, depth, byFolder, decrypted, expanded, toggleExpand,
   editingId, editName, setEditingId, setEditName, onUpdate, onDelete,
   onAddCredential, onOpenCredential, onDeleteCredential, onTagClick,
+  selectedIds, onToggleSelect,
 }: {
   folders: FolderItem[]; depth: number;
   byFolder: Map<string, CredentialListItem[]>; decrypted: Map<string, DecryptedCredentialMeta>;
@@ -171,6 +272,7 @@ function FolderTree({
   onUpdate: (id: string) => void; onDelete: (id: string) => void;
   onAddCredential: (id: string) => void; onOpenCredential: (id: string) => void;
   onDeleteCredential: (id: string, e: React.MouseEvent) => void; onTagClick: (tagId: string) => void;
+  selectedIds: Set<string>; onToggleSelect: (id: string) => void;
 }) {
   return (
     <>
@@ -180,8 +282,8 @@ function FolderTree({
         const isEditing = editingId === folder.id;
         return (
           <div key={folder.id}>
-            <div onClick={() => !isEditing && toggleExpand(folder.id)}
-              className={cn('flex items-center gap-3 px-4 py-4', depth > 0 && 'bg-slate-50/60', !isEditing && 'cursor-pointer hover:bg-slate-50 transition-colors')}>
+            <DroppableRow id={folder.id} onClick={() => !isEditing && toggleExpand(folder.id)}
+              className={cn('flex items-center gap-3 px-5 py-3.5', depth > 0 && 'bg-slate-50/60', !isEditing && 'cursor-pointer hover:bg-slate-50 transition-colors')}>
               {depth > 0 && <div style={{ width: Math.min(depth, 4) * 20 }} className="shrink-0" />}
               {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
 
@@ -209,25 +311,25 @@ function FolderTree({
 
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={e => { e.stopPropagation(); onAddCredential(folder.id); }}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Add credential to this folder">
+                      className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Add credential to this folder">
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={e => { e.stopPropagation(); setEditingId(folder.id); setEditName(folder.name); }}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Rename">
+                      className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Rename">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button onClick={e => { e.stopPropagation(); onDelete(folder.id); }}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                      className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </>
               )}
-            </div>
+            </DroppableRow>
 
             {isOpen && !isEditing && (
               members.length === 0 ? (
-                <div className="px-4 py-4 text-xs text-slate-400 bg-slate-50/50" style={{ paddingLeft: 20 * Math.min(depth, 4) + 56 }}>
+                <div className="px-5 py-4 text-xs text-slate-400 bg-slate-50/50" style={{ paddingLeft: 20 * Math.min(depth, 4) + 56 }}>
                   No credentials directly in this folder yet. <button onClick={() => onAddCredential(folder.id)} className="text-indigo-600 hover:underline">Add one</button>.
                 </div>
               ) : (
@@ -237,7 +339,9 @@ function FolderTree({
                       onOpen={() => onOpenCredential(cred.id)}
                       onDelete={e => onDeleteCredential(cred.id, e)}
                       onTagClick={onTagClick}
-                      indent
+                      indent draggable selectable
+                      selected={selectedIds.has(cred.id)}
+                      onToggleSelect={() => onToggleSelect(cred.id)}
                     />
                   ))}
                 </div>
@@ -255,6 +359,7 @@ function FolderTree({
                   onUpdate={onUpdate} onDelete={onDelete}
                   onAddCredential={onAddCredential} onOpenCredential={onOpenCredential}
                   onDeleteCredential={onDeleteCredential} onTagClick={onTagClick}
+                  selectedIds={selectedIds} onToggleSelect={onToggleSelect}
                 />
               </div>
             )}

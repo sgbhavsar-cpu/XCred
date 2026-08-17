@@ -25,6 +25,9 @@ public class BackupController(AppDbContext db, IAuditService audit) : Controller
         if (user == null) return NotFound();
 
         var credentials = await db.Credentials.AsNoTracking()
+            .AsSplitQuery() // 2 collection Includes in one query JOIN their result sets together,
+                            // so row count is their PRODUCT per credential, not their sum — see
+                            // CredentialsController.GetAll's comment on the same pattern.
             .Where(c => c.OwnerId == userId)
             .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
             .Include(c => c.Attachments)
