@@ -79,5 +79,17 @@ export function useDecryptedCredentials() {
     return res.data.data as { updated: number; skipped: number };
   };
 
-  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign };
+  /** Adds and/or removes tags across many credentials in one call. Tags are multi-valued per
+   *  credential (unlike folder/group), so this is an add/remove delta, not a "set to" value. */
+  const bulkTags = async (ids: string[], changes: { addTagIds?: string[]; removeTagIds?: string[] }) => {
+    const res = await api.patch('/credentials/bulk-tags', {
+      credentialIds: ids,
+      addTagIds: changes.addTagIds ?? [],
+      removeTagIds: changes.removeTagIds ?? [],
+    });
+    await refetch();
+    return res.data.data as { updated: number; skipped: number };
+  };
+
+  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkTags };
 }

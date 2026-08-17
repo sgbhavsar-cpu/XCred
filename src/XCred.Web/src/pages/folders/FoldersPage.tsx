@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp } from 'lucide-react';
+import { Plus, Search, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -10,6 +10,7 @@ import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDec
 import { useCredentialDnd } from '@/hooks/useCredentialDnd';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
+import SelectAllButton from '@/components/SelectAllButton';
 import BulkEditModal from '@/components/BulkEditModal';
 
 interface FolderItem {
@@ -38,6 +39,7 @@ export default function FoldersPage() {
   const [editName, setEditName] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [search, setSearch] = useState('');
 
   const loadFolders = async () => {
     setFoldersLoading(true);
@@ -157,9 +159,20 @@ export default function FoldersPage() {
     }
   };
 
+  const matchesSearch = (c: CredentialListItem) => {
+    if (!search) return true;
+    const d = decrypted.get(c.id);
+    const q = search.toLowerCase();
+    return (d?.name ?? '').toLowerCase().includes(q)
+      || (d?.username ?? '').toLowerCase().includes(q)
+      || c.tags.some(t => t.name.toLowerCase().includes(q));
+  };
+  const activeFilter = !!search;
+  const visibleCredentials = credentials.filter(matchesSearch);
+
   const byFolder = new Map<string, CredentialListItem[]>();
   const unassigned: CredentialListItem[] = [];
-  for (const c of credentials) {
+  for (const c of visibleCredentials) {
     if (!c.folderId) { unassigned.push(c); continue; }
     if (!byFolder.has(c.folderId)) byFolder.set(c.folderId, []);
     byFolder.get(c.folderId)!.push(c);
@@ -169,6 +182,10 @@ export default function FoldersPage() {
   const loading = foldersLoading || credsLoading;
 
   const nothingAtAll = folders.length === 0 && unassigned.length === 0;
+  const nothingVisible = activeFilter && folders.every(f => !folderSubtreeHasMatch(f, byFolder)) && unassigned.length === 0;
+
+  const allVisibleSelected = visibleCredentials.length > 0 && visibleCredentials.every(c => selectedIds.has(c.id));
+  const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleCredentials.map(c => c.id)));
 
   return (
     <div className="p-6">
@@ -206,6 +223,16 @@ export default function FoldersPage() {
         </div>
       )}
 
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, username, or tag…"
+            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
+      </div>
+
       <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
       {loading ? (
@@ -215,6 +242,11 @@ export default function FoldersPage() {
           <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No folders yet.</p>
           <button onClick={() => setCreating(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first folder →</button>
+        </div>
+      ) : nothingVisible ? (
+        <div className="text-center py-16 text-slate-400">
+          <p className="text-4xl mb-3">🔍</p>
+          <p className="font-medium">No credentials match your search.</p>
         </div>
       ) : (
         // pointerWithin, not dnd-kit's default rectIntersection: the "move to top level" zone
@@ -245,7 +277,7 @@ export default function FoldersPage() {
               <FolderTree
                 folders={folders} depth={0}
                 byFolder={byFolder} decrypted={decrypted}
-                expanded={expanded} toggleExpand={toggleExpand}
+                expanded={expanded} toggleExpand={toggleExpand} activeFilter={activeFilter}
                 editingId={editingId} editName={editName}
                 setEditingId={setEditingId} setEditName={setEditName}
                 onUpdate={updateFolder} onDelete={deleteFolder}
@@ -328,14 +360,14 @@ function DroppableRow({ id, dragId, onClick, className, children, testId }: {
 }
 
 function FolderTree({
-  folders, depth, byFolder, decrypted, expanded, toggleExpand,
+  folders, depth, byFolder, decrypted, expanded, toggleExpand, activeFilter,
   editingId, editName, setEditingId, setEditName, onUpdate, onDelete,
   onAddCredential, onOpenCredential, onDeleteCredential, onTagClick,
   selectedIds, onToggleSelect,
 }: {
   folders: FolderItem[]; depth: number;
   byFolder: Map<string, CredentialListItem[]>; decrypted: Map<string, DecryptedCredentialMeta>;
-  expanded: Set<string>; toggleExpand: (id: string) => void;
+  expanded: Set<string>; toggleExpand: (id: string) => void; activeFilter: boolean;
   editingId: string | null; editName: string;
   setEditingId: (id: string | null) => void; setEditName: (name: string) => void;
   onUpdate: (id: string) => void; onDelete: (id: string) => void;
@@ -345,9 +377,9 @@ function FolderTree({
 }) {
   return (
     <>
-      {folders.map(folder => {
+      {folders.filter(f => !activeFilter || folderSubtreeHasMatch(f, byFolder)).map(folder => {
         const members = byFolder.get(folder.id) ?? [];
-        const isOpen = expanded.has(folder.id);
+        const isOpen = expanded.has(folder.id) || activeFilter;
         const isEditing = editingId === folder.id;
         return (
           <div key={folder.id}>
@@ -423,7 +455,7 @@ function FolderTree({
                 <FolderTree
                   folders={folder.children} depth={depth + 1}
                   byFolder={byFolder} decrypted={decrypted}
-                  expanded={expanded} toggleExpand={toggleExpand}
+                  expanded={expanded} toggleExpand={toggleExpand} activeFilter={activeFilter}
                   editingId={editingId} editName={editName}
                   setEditingId={setEditingId} setEditName={setEditName}
                   onUpdate={onUpdate} onDelete={onDelete}
@@ -462,4 +494,12 @@ function folderById(folders: FolderItem[]): Map<string, FolderItem> {
 function isDescendant(folder: FolderItem, candidateId: string): boolean {
   if (folder.id === candidateId) return true;
   return folder.children.some(child => isDescendant(child, candidateId));
+}
+
+/** True if folder directly holds a search-matching credential, or any descendant folder does —
+ *  a parent stays visible during a search as long as something inside its subtree matches, even
+ *  if nothing directly in the parent itself does. */
+function folderSubtreeHasMatch(folder: FolderItem, byFolder: Map<string, CredentialListItem[]>): boolean {
+  if ((byFolder.get(folder.id)?.length ?? 0) > 0) return true;
+  return folder.children.some(child => folderSubtreeHasMatch(child, byFolder));
 }

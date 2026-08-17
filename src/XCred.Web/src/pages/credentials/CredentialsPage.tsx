@@ -10,6 +10,7 @@ import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import { useCredentialDnd } from '@/hooks/useCredentialDnd';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
+import SelectAllButton from '@/components/SelectAllButton';
 import BulkEditModal from '@/components/BulkEditModal';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel } from '@/lib/utils';
@@ -138,6 +139,8 @@ export default function CredentialsPage() {
     return next;
   });
   const clearSelection = () => setSelectedIds(new Set());
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id));
+  const toggleSelectAll = () => setSelectedIds(allFilteredSelected ? new Set() : new Set(filtered.map(c => c.id)));
 
   const { sensors, active, handleDragStart, handleDragEnd } = useCredentialDnd(async (kind, credId, groupId) => {
     if (kind !== 'cred') return; // this page only drags credentials, never folders
@@ -297,6 +300,7 @@ export default function CredentialsPage() {
             {ALL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
           </select>
         </div>
+        <SelectAllButton allSelected={allFilteredSelected} onToggle={toggleSelectAll} disabled={filtered.length === 0} />
         <button onClick={refreshAll} title="Refresh" className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
           <RefreshCw className="w-4 h-4 text-slate-500" />
         </button>

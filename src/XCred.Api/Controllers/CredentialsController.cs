@@ -228,6 +228,66 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         }));
     }
 
+    // Tags are multi-valued per credential (unlike folder/group), so a bulk edit here is an
+    // add/remove delta rather than BulkAssign's "set to this value" — a credential keeps
+    // whatever tags it already had that aren't being removed.
+    [HttpPatch("bulk-tags")]
+    public async Task<ActionResult<ApiResponse<BulkTagsResultDto>>> BulkTags([FromBody] BulkTagsRequest req)
+    {
+        var userId = GetUserId();
+
+        if (req.CredentialIds.Count == 0)
+            return BadRequest(ApiResponse<BulkTagsResultDto>.Fail("NO_CREDENTIALS", "No credentials selected."));
+
+        if (req.AddTagIds.Count == 0 && req.RemoveTagIds.Count == 0)
+            return BadRequest(ApiResponse<BulkTagsResultDto>.Fail("NO_CHANGE", "Nothing to update."));
+
+        var ownedTagIds = await db.Tags
+            .Where(t => t.OwnerId == userId && (req.AddTagIds.Contains(t.Id) || req.RemoveTagIds.Contains(t.Id)))
+            .Select(t => t.Id)
+            .ToListAsync();
+        var addIds = req.AddTagIds.Where(ownedTagIds.Contains).ToHashSet();
+        var removeIds = req.RemoveTagIds.Where(ownedTagIds.Contains).ToHashSet();
+
+        var creds = await db.Credentials
+            .Where(c => req.CredentialIds.Contains(c.Id) && c.OwnerId == userId)
+            .Include(c => c.CredentialTags)
+            .ToListAsync();
+
+        foreach (var cred in creds)
+        {
+            if (removeIds.Count > 0)
+                foreach (var ct in cred.CredentialTags.Where(ct => removeIds.Contains(ct.TagId)).ToList())
+                    cred.CredentialTags.Remove(ct);
+
+            foreach (var tagId in addIds)
+            {
+                if (!cred.CredentialTags.Any(ct => ct.TagId == tagId))
+                    cred.CredentialTags.Add(new CredentialTag { CredentialId = cred.Id, TagId = tagId });
+            }
+
+            cred.UpdatedAt = DateTime.UtcNow;
+            cred.UpdatedById = userId;
+        }
+
+        await db.SaveChangesAsync();
+
+        var what = (addIds.Count > 0, removeIds.Count > 0) switch
+        {
+            (true, true) => "added and removed tags",
+            (true, false) => "added tags",
+            _ => "removed tags"
+        };
+        await audit.LogAsync(userId, AuditActions.CredentialsBulkAssigned, "Credential", null,
+            $"Bulk {what} for {creds.Count} credential(s)", GetIp());
+
+        return Ok(ApiResponse<BulkTagsResultDto>.Ok(new BulkTagsResultDto
+        {
+            Updated = creds.Count,
+            Skipped = req.CredentialIds.Count - creds.Count
+        }));
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse<string>>> Delete(Guid id)
     {

@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { cn } from '@/lib/utils';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import CredentialRow from '@/components/CredentialRow';
+import SelectionToolbar from '@/components/SelectionToolbar';
+import SelectAllButton from '@/components/SelectAllButton';
+import BulkTagEditModal from '@/components/BulkTagEditModal';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
 
@@ -13,7 +16,7 @@ const PRESET_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf
 
 export default function TagsPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, deleteCredential } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkTags } = useDecryptedCredentials();
 
   const [tags, setTags] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -24,6 +27,9 @@ export default function TagsPage() {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
   const [adding, setAdding] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const load = async () => {
     setTagsLoading(true);
@@ -72,6 +78,13 @@ export default function TagsPage() {
     return next;
   });
 
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+
   const handleDeleteCredential = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this credential? This cannot be undone.')) return;
@@ -81,8 +94,30 @@ export default function TagsPage() {
     } catch { toast.error('Failed to delete.'); }
   };
 
+  const applyBulkTagEdit = async (changes: { addTagIds: string[]; removeTagIds: string[] }) => {
+    try {
+      const result = await bulkTags(Array.from(selectedIds), changes);
+      toast.success(`Updated ${result.updated} credential${result.updated !== 1 ? 's' : ''}.`);
+      clearSelection();
+      setShowBulkEdit(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
+    }
+  };
+
+  const matchesSearch = (c: (typeof credentials)[number]) => {
+    if (!search) return true;
+    const d = decrypted.get(c.id);
+    const q = search.toLowerCase();
+    return (d?.name ?? '').toLowerCase().includes(q) || (d?.username ?? '').toLowerCase().includes(q);
+  };
+  const activeFilter = !!search;
+  const visibleCredentials = credentials.filter(matchesSearch);
+
   const byTag = new Map<string, typeof credentials>();
-  for (const c of credentials) {
+  const untagged: typeof credentials = [];
+  for (const c of visibleCredentials) {
+    if (c.tags.length === 0) { untagged.push(c); continue; }
     for (const t of c.tags) {
       if (!byTag.has(t.id)) byTag.set(t.id, []);
       byTag.get(t.id)!.push(c);
@@ -90,6 +125,11 @@ export default function TagsPage() {
   }
 
   const loading = tagsLoading || credsLoading;
+  const visibleTags = tags.filter(t => !activeFilter || (byTag.get(t.id)?.length ?? 0) > 0);
+  const nothingVisible = activeFilter && visibleTags.length === 0 && untagged.length === 0;
+
+  const allVisibleSelected = visibleCredentials.length > 0 && visibleCredentials.every(c => selectedIds.has(c.id));
+  const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleCredentials.map(c => c.id)));
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -132,6 +172,18 @@ export default function TagsPage() {
         </div>
       )}
 
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name or username…"
+            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
+      </div>
+
+      <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
       ) : tags.length === 0 ? (
@@ -140,11 +192,16 @@ export default function TagsPage() {
           <p className="font-medium">No tags yet.</p>
           <button onClick={() => setAdding(true)} className="mt-3 text-indigo-600 text-sm hover:underline">Create your first tag →</button>
         </div>
+      ) : nothingVisible ? (
+        <div className="text-center py-16 text-slate-400">
+          <p className="text-4xl mb-3">🔍</p>
+          <p className="font-medium">No credentials match your search.</p>
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-          {tags.map(tag => {
+          {visibleTags.map(tag => {
             const members = byTag.get(tag.id) ?? [];
-            const isOpen = expanded.has(tag.id);
+            const isOpen = expanded.has(tag.id) || activeFilter;
             const isEditing = editingId === tag.id;
             return (
               <div key={tag.id}>
@@ -221,7 +278,9 @@ export default function TagsPage() {
                           onOpen={() => navigate(`/credentials/${cred.id}`)}
                           onDelete={e => handleDeleteCredential(cred.id, e)}
                           onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
-                          indent
+                          indent selectable
+                          selected={selectedIds.has(cred.id)}
+                          onToggleSelect={() => toggleSelect(cred.id)}
                         />
                       ))}
                     </div>
@@ -230,7 +289,34 @@ export default function TagsPage() {
               </div>
             );
           })}
+
+          {untagged.length > 0 && (
+            <div>
+              {visibleTags.length > 0 && (
+                <div className="px-5 py-2 bg-slate-50">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Untagged</p>
+                </div>
+              )}
+              <div className="divide-y divide-slate-100">
+                {untagged.map(cred => (
+                  <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
+                    onOpen={() => navigate(`/credentials/${cred.id}`)}
+                    onDelete={e => handleDeleteCredential(cred.id, e)}
+                    onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                    selectable
+                    selected={selectedIds.has(cred.id)}
+                    onToggleSelect={() => toggleSelect(cred.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+      )}
+
+      {showBulkEdit && (
+        <BulkTagEditModal count={selectedIds.size} tags={tags}
+          onApply={applyBulkTagEdit} onClose={() => setShowBulkEdit(false)} />
       )}
     </div>
   );
