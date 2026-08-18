@@ -136,6 +136,23 @@ with its related Payment Card, netbanking Website Login, and Mobile Banking PIN 
 | Username | text | |
 | Password | password | |
 
+## Remote Desktop (RDP) *(new)*
+| Field | Type | Notes |
+|---|---|---|
+| Host / Server | text [link] | opens an `rdp://` link |
+| Port | text | optional |
+| Domain | text | optional; leave blank for a local account |
+| Username | text | |
+| Password | password | |
+
+## Windows Server *(new)*
+| Field | Type | Notes |
+|---|---|---|
+| Server / Domain Name | text | |
+| Username | text | |
+| Password | password | |
+| Notes | textarea | optional |
+
 ## Email Account *(new)*
 | Field | Type | Notes |
 |---|---|---|

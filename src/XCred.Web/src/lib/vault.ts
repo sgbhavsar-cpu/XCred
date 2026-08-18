@@ -134,6 +134,12 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'username', label: 'Username', type: 'text' },
     { key: 'password', label: 'Password', type: 'password' },
   ],
+  WindowsServer: [
+    { key: 'serverOrDomainName', label: 'Server / Domain Name', type: 'text', placeholder: 'server01 or contoso.local' },
+    { key: 'username', label: 'Username', type: 'text' },
+    { key: 'password', label: 'Password', type: 'password' },
+    { key: 'notes', label: 'Notes', type: 'textarea', optional: true, rows: 4 },
+  ],
   EmailAccount: [
     { key: 'emailAddress', label: 'Email Address', type: 'text', placeholder: 'you@example.com', linkType: 'email' },
     { key: 'password', label: 'Password', type: 'password' },

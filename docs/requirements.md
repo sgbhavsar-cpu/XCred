@@ -88,6 +88,8 @@ XCred is a web-based, zero-knowledge credential vault for organizations. It allo
 | Bank Account      | Bank name, account holder, account number, IFSC/SWIFT, branch, account type, customer ID (CIF) |
 | Mobile Banking / App PIN | App or bank name, mobile number, customer ID, login PIN, transaction/MPIN |
 | Network Device    | Device name, IP address(es) — multi-value, protocol (Web/Telnet/SSH/Other), port, username, password |
+| Remote Desktop (RDP) | Host/server, port (optional), domain (optional), username, password |
+| Windows Server    | Server/domain name, username, password, notes (optional) |
 | Email Account     | Email address, password, recovery email, recovery phone, IMAP/SMTP host (optional) |
 | Identity Document | Document type (Passport/Aadhaar/PAN/Driving License/Other), number, full name, issue date, expiry date |
 | Insurance Policy  | Provider, policy number, policy type, sum insured, premium due date, nominee |

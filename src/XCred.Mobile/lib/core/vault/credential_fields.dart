@@ -131,6 +131,12 @@ const Map<String, List<FieldDef>> kCredentialFields = {
     FieldDef(key: 'username', label: 'Username', type: 'text'),
     FieldDef(key: 'password', label: 'Password', type: 'password'),
   ],
+  'WindowsServer': [
+    FieldDef(key: 'serverOrDomainName', label: 'Server / Domain Name', type: 'text'),
+    FieldDef(key: 'username', label: 'Username', type: 'text'),
+    FieldDef(key: 'password', label: 'Password', type: 'password'),
+    FieldDef(key: 'notes', label: 'Notes', type: 'textarea', optional: true, rows: 4),
+  ],
   'EmailAccount': [
     FieldDef(key: 'emailAddress', label: 'Email Address', type: 'text', linkType: 'email'),
     FieldDef(key: 'password', label: 'Password', type: 'password'),
