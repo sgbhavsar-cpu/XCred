@@ -20,44 +20,25 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
     public async Task<ActionResult<ApiResponse<IEnumerable<CredentialDto>>>> GetAll()
     {
         var userId = GetUserId();
-        var credentials = await db.Credentials
-            .AsNoTracking()
-            .AsSplitQuery() // 3 collection Includes (tags/attachments/shares) in one query would
-                            // otherwise JOIN into a single result set whose row count is their
-                            // PRODUCT per credential, not their sum — correct to avoid regardless
-                            // of workload size.
-            .Where(c => c.OwnerId == userId)
-            .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
-            .Include(c => c.Attachments)
-            .Include(c => c.Owner)
-            .Include(c => c.Folder)
-            .Include(c => c.CredentialGroup)
-            .Include(c => c.Shares)
+        var credentials = await ToDtoQuery(
+                db.Credentials.AsNoTracking().Where(c => c.OwnerId == userId))
             .OrderByDescending(c => c.UpdatedAt)
             .ToListAsync();
 
-        return Ok(ApiResponse<IEnumerable<CredentialDto>>.Ok(credentials.Select(MapToDto)));
+        return Ok(ApiResponse<IEnumerable<CredentialDto>>.Ok(credentials));
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<CredentialDto>>> GetById(Guid id)
     {
         var userId = GetUserId();
-        var cred = await db.Credentials
-            .AsNoTracking()
-            .AsSplitQuery() // see GetAll's comment on the same pattern
-            .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
-            .Include(c => c.Attachments)
-            .Include(c => c.Owner)
-            .Include(c => c.Folder)
-            .Include(c => c.CredentialGroup)
-            .Include(c => c.Shares)
+        var cred = await ToDtoQuery(db.Credentials.AsNoTracking())
             .FirstOrDefaultAsync(c => c.Id == id && c.OwnerId == userId);
 
         if (cred == null) return NotFound(ApiResponse<CredentialDto>.Fail("NOT_FOUND", "Credential not found."));
 
         await audit.LogAsync(userId, AuditActions.CredentialViewed, "Credential", id, cred.Type, GetIp());
-        return Ok(ApiResponse<CredentialDto>.Ok(MapToDto(cred)));
+        return Ok(ApiResponse<CredentialDto>.Ok(cred));
     }
 
     [HttpPost]
@@ -101,17 +82,9 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         await db.SaveChangesAsync();
         await audit.LogAsync(userId, AuditActions.CredentialCreated, "Credential", cred.Id, req.Type, GetIp());
 
-        var created = await db.Credentials
-            .AsSplitQuery() // see GetAll's comment on the same pattern
-            .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
-            .Include(c => c.Attachments)
-            .Include(c => c.Owner)
-            .Include(c => c.Folder)
-            .Include(c => c.CredentialGroup)
-            .Include(c => c.Shares)
-            .FirstAsync(c => c.Id == cred.Id);
+        var created = await ToDtoQuery(db.Credentials).FirstAsync(c => c.Id == cred.Id);
 
-        return CreatedAtAction(nameof(GetById), new { id = cred.Id }, ApiResponse<CredentialDto>.Ok(MapToDto(created)));
+        return CreatedAtAction(nameof(GetById), new { id = cred.Id }, ApiResponse<CredentialDto>.Ok(created));
     }
 
     [HttpPut("{id:guid}")]
@@ -163,17 +136,9 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         await db.SaveChangesAsync();
         await audit.LogAsync(userId, AuditActions.CredentialUpdated, "Credential", id, cred.Type, GetIp());
 
-        var updated = await db.Credentials
-            .AsSplitQuery() // see GetAll's comment on the same pattern
-            .Include(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
-            .Include(c => c.Attachments)
-            .Include(c => c.Owner)
-            .Include(c => c.Folder)
-            .Include(c => c.CredentialGroup)
-            .Include(c => c.Shares)
-            .FirstAsync(c => c.Id == id);
+        var updated = await ToDtoQuery(db.Credentials).FirstAsync(c => c.Id == id);
 
-        return Ok(ApiResponse<CredentialDto>.Ok(MapToDto(updated)));
+        return Ok(ApiResponse<CredentialDto>.Ok(updated));
     }
 
     // Metadata-only reassignment (folder/group) for drag-and-drop and multi-select bulk edit.
@@ -315,40 +280,48 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         return Ok(ApiResponse<string>.Ok("Logged."));
     }
 
-    private CredentialDto MapToDto(Credential c) => new()
-    {
-        Id = c.Id,
-        Type = c.Type,
-        EncryptedData = c.EncryptedData,
-        DataIv = c.DataIv,
-        EncryptedCredentialKey = c.EncryptedCredentialKey,
-        ExpiryDate = c.ExpiryDate,
-        FolderId = c.FolderId,
-        FolderName = c.Folder?.Name,
-        CredentialGroupId = c.CredentialGroupId,
-        CredentialGroupName = c.CredentialGroup?.Name,
-        OwnerId = c.OwnerId,
-        OwnerUsername = c.Owner?.Username ?? string.Empty,
-        IsShared = c.Shares.Any(s => !s.IsRevoked),
-        CreatedAt = c.CreatedAt,
-        UpdatedAt = c.UpdatedAt,
-        Tags = c.CredentialTags.Select(ct => new TagDto
+    // Projects straight to the DTO shape instead of .Include()-ing full entities: attachments
+    // carry their whole file content in EncryptedData/DataIv (base64 text, right alongside the
+    // metadata in the same table — see CredentialAttachment), and MapToDto never used those
+    // columns for a list/detail view. .Include(c => c.Attachments) was loading and discarding
+    // that blob on every request — confirmed via SQL to be ~65MB across just 14 attachments on
+    // one real account, and the actual cause of that account's multi-second GetAll() responses.
+    // A Select() projection makes EF Core generate SQL that only fetches the columns below.
+    private static IQueryable<CredentialDto> ToDtoQuery(IQueryable<Credential> query) =>
+        query.Select(c => new CredentialDto
         {
-            Id = ct.Tag.Id,
-            Name = ct.Tag.Name,
-            Color = ct.Tag.Color
-        }).ToList(),
-        Attachments = c.Attachments.Select(a => new AttachmentDto
-        {
-            Id = a.Id,
-            EncryptedFileName = a.EncryptedFileName,
-            FileNameIv = a.FileNameIv,
-            EncryptedMimeType = a.EncryptedMimeType,
-            MimeTypeIv = a.MimeTypeIv,
-            FileSizeBytes = a.FileSizeBytes,
-            UploadedAt = a.UploadedAt
-        }).ToList()
-    };
+            Id = c.Id,
+            Type = c.Type,
+            EncryptedData = c.EncryptedData,
+            DataIv = c.DataIv,
+            EncryptedCredentialKey = c.EncryptedCredentialKey,
+            ExpiryDate = c.ExpiryDate,
+            FolderId = c.FolderId,
+            FolderName = c.Folder != null ? c.Folder.Name : null,
+            CredentialGroupId = c.CredentialGroupId,
+            CredentialGroupName = c.CredentialGroup != null ? c.CredentialGroup.Name : null,
+            OwnerId = c.OwnerId,
+            OwnerUsername = c.Owner != null ? c.Owner.Username : string.Empty,
+            IsShared = c.Shares.Any(s => !s.IsRevoked),
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt,
+            Tags = c.CredentialTags.Select(ct => new TagDto
+            {
+                Id = ct.Tag.Id,
+                Name = ct.Tag.Name,
+                Color = ct.Tag.Color
+            }).ToList(),
+            Attachments = c.Attachments.Select(a => new AttachmentDto
+            {
+                Id = a.Id,
+                EncryptedFileName = a.EncryptedFileName,
+                FileNameIv = a.FileNameIv,
+                EncryptedMimeType = a.EncryptedMimeType,
+                MimeTypeIv = a.MimeTypeIv,
+                FileSizeBytes = a.FileSizeBytes,
+                UploadedAt = a.UploadedAt
+            }).ToList()
+        });
 
     private async Task<bool> IsFolderAccessibleAsync(Guid? folderId, Guid userId) =>
         !folderId.HasValue || await db.Folders.AnyAsync(f => f.Id == folderId && f.OwnerId == userId);

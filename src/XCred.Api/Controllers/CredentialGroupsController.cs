@@ -23,31 +23,71 @@ public class CredentialGroupsController(AppDbContext db, IAuditService audit) : 
         var userId = GetUserId();
         var myTeamIds = await db.GroupMembers.Where(gm => gm.UserId == userId).Select(gm => gm.GroupId).ToListAsync();
 
+        // Projected rather than .Include()-d: only the credential COUNT is needed here, and a
+        // projection lets EF Core translate that into a SQL subquery instead of loading every
+        // credential row in every group just to call .Count() on them in memory.
         var groups = await db.CredentialGroups
             .AsNoTracking()
             .Where(cg => cg.OwnerId == userId || (cg.GroupId != null && myTeamIds.Contains(cg.GroupId.Value)))
-            .Include(cg => cg.Credentials)
             .OrderBy(cg => cg.Name)
+            .Select(cg => new CredentialGroupDto
+            {
+                Id = cg.Id,
+                Name = cg.Name,
+                Icon = cg.Icon,
+                GroupId = cg.GroupId,
+                CredentialCount = cg.Credentials.Count,
+                CreatedAt = cg.CreatedAt,
+                UpdatedAt = cg.UpdatedAt
+            })
             .ToListAsync();
 
-        return Ok(ApiResponse<IEnumerable<CredentialGroupDto>>.Ok(groups.Select(MapToDto)));
+        return Ok(ApiResponse<IEnumerable<CredentialGroupDto>>.Ok(groups));
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<CredentialGroupDetailDto>>> GetById(Guid id)
     {
         var userId = GetUserId();
-        var group = await db.CredentialGroups
-            .AsNoTracking()
-            .Include(cg => cg.Credentials).ThenInclude(c => c.CredentialTags).ThenInclude(ct => ct.Tag)
-            .Include(cg => cg.Credentials).ThenInclude(c => c.Attachments)
-            .Include(cg => cg.Credentials).ThenInclude(c => c.Owner)
-            .Include(cg => cg.Credentials).ThenInclude(c => c.Folder)
-            .Include(cg => cg.Credentials).ThenInclude(c => c.Shares)
-            .FirstOrDefaultAsync(cg => cg.Id == id);
+        var group = await db.CredentialGroups.AsNoTracking().FirstOrDefaultAsync(cg => cg.Id == id);
 
         if (group == null) return NotFound(ApiResponse<CredentialGroupDetailDto>.Fail("NOT_FOUND", "Credential group not found."));
         if (!await CanAccessAsync(group, userId)) return Forbid();
+
+        // Projected instead of .Include()-d: see CredentialsController.ToDtoQuery for why —
+        // attachments carry their full file content alongside metadata, and this view never
+        // uses it.
+        var credentials = await db.Credentials.AsNoTracking()
+            .Where(c => c.CredentialGroupId == id)
+            .OrderBy(c => c.Type)
+            .Select(c => new CredentialDto
+            {
+                Id = c.Id,
+                Type = c.Type,
+                EncryptedData = c.EncryptedData,
+                DataIv = c.DataIv,
+                EncryptedCredentialKey = c.EncryptedCredentialKey,
+                ExpiryDate = c.ExpiryDate,
+                FolderId = c.FolderId,
+                FolderName = c.Folder != null ? c.Folder.Name : null,
+                OwnerId = c.OwnerId,
+                OwnerUsername = c.Owner != null ? c.Owner.Username : string.Empty,
+                IsShared = c.Shares.Any(s => !s.IsRevoked),
+                CreatedAt = c.CreatedAt,
+                UpdatedAt = c.UpdatedAt,
+                Tags = c.CredentialTags.Select(ct => new TagDto { Id = ct.Tag.Id, Name = ct.Tag.Name, Color = ct.Tag.Color }).ToList(),
+                Attachments = c.Attachments.Select(a => new AttachmentDto
+                {
+                    Id = a.Id,
+                    EncryptedFileName = a.EncryptedFileName,
+                    FileNameIv = a.FileNameIv,
+                    EncryptedMimeType = a.EncryptedMimeType,
+                    MimeTypeIv = a.MimeTypeIv,
+                    FileSizeBytes = a.FileSizeBytes,
+                    UploadedAt = a.UploadedAt
+                }).ToList()
+            })
+            .ToListAsync();
 
         var dto = new CredentialGroupDetailDto
         {
@@ -55,10 +95,10 @@ public class CredentialGroupsController(AppDbContext db, IAuditService audit) : 
             Name = group.Name,
             Icon = group.Icon,
             GroupId = group.GroupId,
-            CredentialCount = group.Credentials.Count,
+            CredentialCount = credentials.Count,
             CreatedAt = group.CreatedAt,
             UpdatedAt = group.UpdatedAt,
-            Credentials = group.Credentials.OrderBy(c => c.Type).Select(MapCredentialToDto).ToList()
+            Credentials = credentials
         };
 
         return Ok(ApiResponse<CredentialGroupDetailDto>.Ok(dto));
@@ -146,34 +186,6 @@ public class CredentialGroupsController(AppDbContext db, IAuditService audit) : 
         CredentialCount = cg.Credentials.Count,
         CreatedAt = cg.CreatedAt,
         UpdatedAt = cg.UpdatedAt
-    };
-
-    private static CredentialDto MapCredentialToDto(Credential c) => new()
-    {
-        Id = c.Id,
-        Type = c.Type,
-        EncryptedData = c.EncryptedData,
-        DataIv = c.DataIv,
-        EncryptedCredentialKey = c.EncryptedCredentialKey,
-        ExpiryDate = c.ExpiryDate,
-        FolderId = c.FolderId,
-        FolderName = c.Folder?.Name,
-        OwnerId = c.OwnerId,
-        OwnerUsername = c.Owner?.Username ?? string.Empty,
-        IsShared = c.Shares.Any(s => !s.IsRevoked),
-        CreatedAt = c.CreatedAt,
-        UpdatedAt = c.UpdatedAt,
-        Tags = c.CredentialTags.Select(ct => new TagDto { Id = ct.Tag.Id, Name = ct.Tag.Name, Color = ct.Tag.Color }).ToList(),
-        Attachments = c.Attachments.Select(a => new AttachmentDto
-        {
-            Id = a.Id,
-            EncryptedFileName = a.EncryptedFileName,
-            FileNameIv = a.FileNameIv,
-            EncryptedMimeType = a.EncryptedMimeType,
-            MimeTypeIv = a.MimeTypeIv,
-            FileSizeBytes = a.FileSizeBytes,
-            UploadedAt = a.UploadedAt
-        }).ToList()
     };
 
     private Guid GetUserId() =>
