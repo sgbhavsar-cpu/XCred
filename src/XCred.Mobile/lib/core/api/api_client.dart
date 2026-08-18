@@ -33,6 +33,13 @@ class ApiClient {
   }) =>
       _unwrap(_dio.put(path, data: data), fromData);
 
+  Future<T> patch<T>(
+    String path,
+    T Function(dynamic json) fromData, {
+    Object? data,
+  }) =>
+      _unwrap(_dio.patch(path, data: data), fromData);
+
   Future<T> delete<T>(
     String path,
     T Function(dynamic json) fromData,

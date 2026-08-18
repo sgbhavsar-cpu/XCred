@@ -1,8 +1,13 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/api_client.dart';
 import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
 import '../vault/attachment_repository.dart';
+import '../vault/credential_fields.dart';
 import '../vault/credential_group_repository.dart';
 import '../vault/credential_repository.dart';
 import '../vault/credential_type_meta.dart';
@@ -92,6 +97,137 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
   Future<void> refresh() async {
     ref.invalidateSelf();
     await future;
+  }
+
+  CredentialListItem? _find(String id) {
+    for (final c in state.value?.credentials ?? const <CredentialListItem>[]) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// Copies this credential's primary sensitive field (the first `password`-type field
+  /// for its type — "password" for a login, "passphrase" for an SSH key, "keyValue" for
+  /// an API key, etc.) to the clipboard, with the same audit-log call and auto-clear
+  /// countdown as [CredentialDetailScreen]'s own per-field copy buttons. Returns false if
+  /// the type has no password-type field at all, or the credential can't be decrypted —
+  /// callers show a clear error rather than a silent no-op.
+  Future<bool> copyPassword(String id) async {
+    final session = ref.read(authSessionProvider);
+    final item = _find(id);
+    if (session == null || item == null) return false;
+
+    FieldDef? passwordField;
+    for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
+      if (f.type == 'password') { passwordField = f; break; }
+    }
+    if (passwordField == null) return false;
+
+    final crypto = ref.read(cryptoServiceProvider);
+    final data = await crypto.decryptCredentialFields(
+      encryptedData: item.encryptedData,
+      dataIv: item.dataIv,
+      encryptedCredentialKey: item.encryptedCredentialKey,
+      privateKey: session.privateKey,
+    );
+    final value = data[passwordField.key] as String?;
+    if (value == null || value.isEmpty) return false;
+
+    await Clipboard.setData(ClipboardData(text: value));
+    unawaited(ref
+        .read(apiClientProvider)
+        .post<String>('/api/credentials/$id/copy?field=${passwordField.key}',
+            identityFromData<String>, data: null)
+        .catchError((_) => ''));
+
+    final seconds = ref.read(orgSettingsProvider).clipboardClearSeconds;
+    Future.delayed(Duration(seconds: seconds), () async {
+      final current = await Clipboard.getData(Clipboard.kTextPlain);
+      if (current?.text == value) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    });
+    return true;
+  }
+
+  /// Decrypts a credential and re-encrypts the same data (with " (Copy)" appended to the
+  /// name) as a brand-new credential carrying the same type/folder/group/tags — mirrors
+  /// the web app's `duplicateCredential`. Returns the new id (caller navigates to
+  /// `/credentials/<id>/edit` with it), or null if it couldn't be duplicated.
+  Future<String?> duplicateCredential(String id) async {
+    final session = ref.read(authSessionProvider);
+    final item = _find(id);
+    if (session == null || item == null) return null;
+
+    final crypto = ref.read(cryptoServiceProvider);
+    final data = await crypto.decryptCredentialFields(
+      encryptedData: item.encryptedData,
+      dataIv: item.dataIv,
+      encryptedCredentialKey: item.encryptedCredentialKey,
+      privateKey: session.privateKey,
+    );
+    final name = data['name'] as String?;
+    final payload = {
+      ...data,
+      'name': '${(name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type)} (Copy)',
+    };
+    final enc = await crypto.encryptCredentialFields(
+      payload: payload,
+      publicKeySpkiB64: session.publicKeySpkiB64,
+    );
+
+    final newId = await ref.read(credentialRepositoryProvider).create({
+      'type': item.type,
+      'encryptedData': enc.encryptedData,
+      'dataIv': enc.dataIv,
+      'encryptedCredentialKey': enc.encryptedCredentialKey,
+      'expiryDate': item.expiryDate?.toIso8601String(),
+      'folderId': item.folderId,
+      'credentialGroupId': item.credentialGroupId,
+      'tagIds': item.tags.map((t) => t.id).toList(),
+    });
+    await refresh();
+    return newId;
+  }
+
+  Future<void> deleteCredential(String id) async {
+    await ref.read(credentialRepositoryProvider).delete(id);
+    await refresh();
+  }
+
+  /// See [CredentialRepository.bulkAssign] — this wrapper just also refreshes the vault
+  /// afterward, so every screen watching [vaultProvider] picks up the change reactively.
+  Future<BulkResult> bulkAssign({
+    required List<String> credentialIds,
+    bool updateFolder = false,
+    String? folderId,
+    bool updateCredentialGroup = false,
+    String? credentialGroupId,
+  }) async {
+    final result = await ref.read(credentialRepositoryProvider).bulkAssign(
+          credentialIds: credentialIds,
+          updateFolder: updateFolder,
+          folderId: folderId,
+          updateCredentialGroup: updateCredentialGroup,
+          credentialGroupId: credentialGroupId,
+        );
+    await refresh();
+    return result;
+  }
+
+  /// See [CredentialRepository.bulkTags].
+  Future<BulkResult> bulkTags({
+    required List<String> credentialIds,
+    List<String> addTagIds = const [],
+    List<String> removeTagIds = const [],
+  }) async {
+    final result = await ref.read(credentialRepositoryProvider).bulkTags(
+          credentialIds: credentialIds,
+          addTagIds: addTagIds,
+          removeTagIds: removeTagIds,
+        );
+    await refresh();
+    return result;
   }
 
   Future<VaultState> _load() async {

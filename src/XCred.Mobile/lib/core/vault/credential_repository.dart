@@ -22,6 +22,14 @@ class CredentialWriteResult {
   const CredentialWriteResult(this.outcome);
 }
 
+/// Result of a `bulk-assign`/`bulk-tags` call — mirrors the server's `BulkAssignResultDto`/
+/// `BulkTagsResultDto` (both the same shape).
+class BulkResult {
+  final int updated;
+  final int skipped;
+  const BulkResult({required this.updated, required this.skipped});
+}
+
 /// Owns "read (cache-first when offline), write (network), decrypt (elsewhere, in
 /// memory)" for credentials — architecture.md §2's Repository layer. Decryption
 /// deliberately isn't here: it needs the session's private key, which this class has no
@@ -96,6 +104,70 @@ class CredentialRepository {
       await _db.applyOptimisticCredentialUpdate(id, body, DateTime.now());
       return const CredentialWriteResult(CredentialWriteOutcome.queuedOffline);
     }
+  }
+
+  /// Creates a brand-new credential — used both by the "Add Credential" form and by
+  /// [core/providers/vault_providers.dart]'s duplicate-credential flow, which builds this
+  /// same body from a freshly re-encrypted copy of an existing credential's fields.
+  /// Returns the new credential's id.
+  Future<String> create(Map<String, dynamic> body) async {
+    final data = await _api.post<Map<String, dynamic>>(
+      '/api/credentials',
+      (json) => json as Map<String, dynamic>,
+      data: body,
+    );
+    return data['id'] as String;
+  }
+
+  /// Soft-deletes a credential. No offline queueing here (unlike [update]) — a delete
+  /// while offline should fail loudly rather than silently disappear from the list only
+  /// to reappear once reconnected and flushed.
+  Future<void> delete(String id) =>
+      _api.delete<String>('/api/credentials/$id', identityFromData<String>);
+
+  /// Reassigns folder and/or credential group for one or many credentials in a single
+  /// call — mirrors the web app's `bulkAssign` (useDecryptedCredentials.ts). Folder/group
+  /// are independent: [updateFolder]/[updateCredentialGroup] say which one(s) this call
+  /// should touch, with `folderId`/`credentialGroupId` null meaning "unassign".
+  Future<BulkResult> bulkAssign({
+    required List<String> credentialIds,
+    bool updateFolder = false,
+    String? folderId,
+    bool updateCredentialGroup = false,
+    String? credentialGroupId,
+  }) async {
+    final data = await _api.patch<Map<String, dynamic>>(
+      '/api/credentials/bulk-assign',
+      (json) => json as Map<String, dynamic>,
+      data: {
+        'credentialIds': credentialIds,
+        'updateFolder': updateFolder,
+        'folderId': folderId,
+        'updateCredentialGroup': updateCredentialGroup,
+        'credentialGroupId': credentialGroupId,
+      },
+    );
+    return BulkResult(updated: data['updated'] as int, skipped: data['skipped'] as int);
+  }
+
+  /// Adds and/or removes tags across many credentials in one call. Tags are multi-valued
+  /// per credential (unlike folder/group), so this is an add/remove delta, not a "set to"
+  /// value — mirrors the web app's `bulkTags`.
+  Future<BulkResult> bulkTags({
+    required List<String> credentialIds,
+    List<String> addTagIds = const [],
+    List<String> removeTagIds = const [],
+  }) async {
+    final data = await _api.patch<Map<String, dynamic>>(
+      '/api/credentials/bulk-tags',
+      (json) => json as Map<String, dynamic>,
+      data: {
+        'credentialIds': credentialIds,
+        'addTagIds': addTagIds,
+        'removeTagIds': removeTagIds,
+      },
+    );
+    return BulkResult(updated: data['updated'] as int, skipped: data['skipped'] as int);
   }
 
   /// Assigns (or clears, when [groupId] is null) a credential's Credential Group without

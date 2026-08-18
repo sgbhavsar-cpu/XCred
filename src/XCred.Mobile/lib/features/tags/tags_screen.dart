@@ -7,6 +7,8 @@ import '../../core/models/credential_models.dart';
 import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/selection_app_bar.dart';
+import '../credentials/widgets/bulk_tags_sheet.dart';
 import '../credentials/widgets/credential_row.dart';
 
 const _kPresetColors = [
@@ -18,8 +20,9 @@ Color _hexToColor(String hex) =>
     Color(int.parse(hex.replaceFirst('#', 'FF'), radix: 16));
 
 /// MOB-TAG-01 — flat tag list, create/rename/recolor/delete, member credentials shown
-/// via the same [CredentialRow] pattern as the Credentials screen. Mirrors the web
-/// app's `TagsPage.tsx`.
+/// via the same [CredentialRow] pattern as the Credentials screen. Mirrors the web app's
+/// `TagsPage.tsx`, including its search box, "Untagged" section, and multi-select bulk
+/// tag editing (added to web after this screen's first pass).
 class TagsScreen extends ConsumerStatefulWidget {
   const TagsScreen({super.key});
 
@@ -29,6 +32,23 @@ class TagsScreen extends ConsumerStatefulWidget {
 
 class _TagsScreenState extends ConsumerState<TagsScreen> {
   final Set<String> _expanded = {};
+  final _searchController = TextEditingController();
+  String _search = '';
+  final Set<String> _selectedIds = {};
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
+    if (_search.isEmpty) return true;
+    final q = _search.toLowerCase();
+    final meta = decrypted[c.id];
+    return (meta?.name ?? '').toLowerCase().contains(q) ||
+        (meta?.subtitle ?? '').toLowerCase().contains(q);
+  }
 
   Future<void> _refresh() async {
     await Future.wait([
@@ -36,6 +56,16 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
       ref.read(vaultProvider.notifier).refresh(),
     ]);
   }
+
+  void _toggleSelect(String id) => setState(() {
+        _selectedIds.contains(id) ? _selectedIds.remove(id) : _selectedIds.add(id);
+      });
+
+  void _selectAllVisible(List<CredentialListItem> visible) => setState(() {
+        final allSelected = visible.isNotEmpty && visible.every((c) => _selectedIds.contains(c.id));
+        _selectedIds.clear();
+        if (!allSelected) _selectedIds.addAll(visible.map((c) => c.id));
+      });
 
   Future<void> _createTag() async {
     final result = await _showTagEditor(name: '', color: _kPresetColors[0], title: 'New Tag');
@@ -153,51 +183,123 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
   Widget build(BuildContext context) {
     final tagsAsync = ref.watch(tagListProvider);
     final vaultAsync = ref.watch(vaultProvider);
+    final activeFilter = _search.isNotEmpty;
+
+    final vault = vaultAsync.value;
+    final byTag = <String, List<CredentialListItem>>{};
+    final untagged = <CredentialListItem>[];
+    if (vault != null) {
+      for (final c in vault.credentials) {
+        if (!_matchesSearch(c, vault.decrypted)) continue;
+        if (c.tags.isEmpty) {
+          untagged.add(c);
+          continue;
+        }
+        for (final t in c.tags) {
+          (byTag[t.id] ??= []).add(c);
+        }
+      }
+    }
+    final tagsValue = tagsAsync.value ?? const <TagSummary>[];
+    final visibleTags =
+        tagsValue.where((t) => !activeFilter || (byTag[t.id]?.isNotEmpty ?? false)).toList();
+    final visibleCredentials = [...byTag.values.expand((v) => v), ...untagged];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tags')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createTag,
-        icon: const Icon(Icons.add),
-        label: const Text('New Tag'),
-      ),
-      body: tagsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => EmptyState(
-          icon: Icons.error_outline,
-          message: friendlyErrorMessage(e),
-          actionLabel: 'Retry',
-          onAction: () => ref.read(tagListProvider.notifier).refresh(),
+      appBar: buildSelectionAwareAppBar(
+        normalTitle: 'Tags',
+        selectedCount: _selectedIds.length,
+        onClearSelection: () => setState(_selectedIds.clear),
+        onSelectAll: () => _selectAllVisible(visibleCredentials),
+        onBulkEdit: () => showBulkTagsSheet(
+          context,
+          credentialIds: _selectedIds.toList(),
+          tags: tagsValue,
+          onApplied: () => setState(_selectedIds.clear),
         ),
-        data: (tags) {
-          final vault = vaultAsync.value;
-          if (vault == null) return const Center(child: CircularProgressIndicator());
-
-          final byTag = <String, List<CredentialListItem>>{};
-          for (final c in vault.credentials) {
-            for (final t in c.tags) {
-              (byTag[t.id] ??= []).add(c);
-            }
-          }
-
-          if (tags.isEmpty) {
-            return EmptyState(
-              icon: Icons.label_outline,
-              message: 'No tags yet.',
-              actionLabel: 'Create your first tag',
-              onAction: _createTag,
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              children: [
-                for (final tag in tags) ..._buildTagSection(tag, byTag, vault),
-              ],
+      ),
+      floatingActionButton: _selectedIds.isEmpty
+          ? FloatingActionButton.extended(
+              onPressed: _createTag,
+              icon: const Icon(Icons.add),
+              label: const Text('New Tag'),
+            )
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search, size: 20),
+                hintText: 'Search by name or username…',
+              ),
+              onChanged: (v) => setState(() => _search = v),
             ),
-          );
-        },
+          ),
+          Expanded(
+            child: tagsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => EmptyState(
+                icon: Icons.error_outline,
+                message: friendlyErrorMessage(e),
+                actionLabel: 'Retry',
+                onAction: () => ref.read(tagListProvider.notifier).refresh(),
+              ),
+              data: (tags) {
+                if (vault == null) return const Center(child: CircularProgressIndicator());
+
+                if (tags.isEmpty) {
+                  return EmptyState(
+                    icon: Icons.label_outline,
+                    message: 'No tags yet.',
+                    actionLabel: 'Create your first tag',
+                    onAction: _createTag,
+                  );
+                }
+                if (activeFilter && visibleTags.isEmpty && untagged.isEmpty) {
+                  return const EmptyState(
+                    icon: Icons.search_off,
+                    message: 'No credentials match your search.',
+                  );
+                }
+
+                return RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: ListView(
+                    children: [
+                      for (final tag in visibleTags) ..._buildTagSection(tag, byTag, vault, activeFilter),
+                      if (untagged.isNotEmpty) ...[
+                        if (tagsValue.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                            child: Text('UNTAGGED',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(letterSpacing: 1, color: Theme.of(context).hintColor)),
+                          ),
+                        for (final cred in untagged)
+                          CredentialRow(
+                            cred: cred,
+                            decrypted: vault.decrypted[cred.id],
+                            showActions: true,
+                            selectionMode: _selectedIds.isNotEmpty,
+                            selected: _selectedIds.contains(cred.id),
+                            onToggleSelect: () => _toggleSelect(cred.id),
+                            onLongPress: () => _toggleSelect(cred.id),
+                            onTap: () => context.push('/credentials/${cred.id}'),
+                          ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -206,9 +308,10 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
     TagSummary tag,
     Map<String, List<CredentialListItem>> byTag,
     VaultState vault,
+    bool activeFilter,
   ) {
     final members = byTag[tag.id] ?? const <CredentialListItem>[];
-    final isOpen = _expanded.contains(tag.id);
+    final isOpen = _expanded.contains(tag.id) || activeFilter;
     return [
       ListTile(
         leading: CircleAvatar(radius: 8, backgroundColor: _hexToColor(tag.color)),
@@ -248,6 +351,11 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
             cred: cred,
             decrypted: vault.decrypted[cred.id],
             indent: true,
+            showActions: true,
+            selectionMode: _selectedIds.isNotEmpty,
+            selected: _selectedIds.contains(cred.id),
+            onToggleSelect: () => _toggleSelect(cred.id),
+            onLongPress: () => _toggleSelect(cred.id),
             onTap: () => context.push('/credentials/${cred.id}'),
           ),
     ];

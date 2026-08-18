@@ -9,6 +9,8 @@ import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/selection_app_bar.dart';
+import 'widgets/bulk_assign_sheet.dart';
 import 'widgets/credential_row.dart';
 
 /// MOB-CRED-01 — expandable tree of Credential Groups + an ungrouped section, search,
@@ -27,6 +29,17 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
   String _search = '';
   String? _typeFilter;
   final Set<String> _expanded = {};
+  final Set<String> _selectedIds = {};
+
+  void _toggleSelect(String id) => setState(() {
+        _selectedIds.contains(id) ? _selectedIds.remove(id) : _selectedIds.add(id);
+      });
+
+  void _selectAllVisible(List<CredentialListItem> visible) => setState(() {
+        final allSelected = visible.isNotEmpty && visible.every((c) => _selectedIds.contains(c.id));
+        _selectedIds.clear();
+        if (!allSelected) _selectedIds.addAll(visible.map((c) => c.id));
+      });
 
   @override
   void dispose() {
@@ -149,26 +162,39 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     final groupsAsync = ref.watch(credentialGroupsProvider);
     final syncState = ref.watch(syncProvider);
     final activeFilter = _search.isNotEmpty || _typeFilter != null;
+    final filtered = vaultAsync.value == null
+        ? const <CredentialListItem>[]
+        : vaultAsync.value!.credentials.where((c) => _matches(c, vaultAsync.value!.decrypted)).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Credentials'),
-        actions: [
+      appBar: buildSelectionAwareAppBar(
+        normalTitle: 'Credentials',
+        normalActions: [
           IconButton(
             icon: const Icon(Icons.create_new_folder_outlined),
             tooltip: 'New Credential Group',
             onPressed: _createGroup,
           ),
         ],
+        selectedCount: _selectedIds.length,
+        onClearSelection: () => setState(_selectedIds.clear),
+        onSelectAll: () => _selectAllVisible(filtered),
+        onBulkEdit: () => showBulkAssignSheet(
+          context,
+          credentialIds: _selectedIds.toList(),
+          onApplied: () => setState(_selectedIds.clear),
+        ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final saved = await context.push<bool>('/credentials/new');
-          if (saved == true) _refresh();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Credential'),
-      ),
+      floatingActionButton: _selectedIds.isNotEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                final saved = await context.push<bool>('/credentials/new');
+                if (saved == true) _refresh();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Credential'),
+            ),
       body: Column(
         children: [
           Padding(
@@ -271,6 +297,11 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
             CredentialRow(
               cred: cred,
               decrypted: vault.decrypted[cred.id],
+              showActions: true,
+              selectionMode: _selectedIds.isNotEmpty,
+              selected: _selectedIds.contains(cred.id),
+              onToggleSelect: () => _toggleSelect(cred.id),
+              onLongPress: () => _toggleSelect(cred.id),
               onTap: () => context.push('/credentials/${cred.id}'),
             ),
         ],
@@ -329,6 +360,11 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
             cred: cred,
             decrypted: vault.decrypted[cred.id],
             indent: true,
+            showActions: true,
+            selectionMode: _selectedIds.isNotEmpty,
+            selected: _selectedIds.contains(cred.id),
+            onToggleSelect: () => _toggleSelect(cred.id),
+            onLongPress: () => _toggleSelect(cred.id),
             onTap: () => context.push('/credentials/${cred.id}'),
           ),
     ];
