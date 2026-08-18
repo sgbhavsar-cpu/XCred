@@ -256,60 +256,61 @@ export default function FoldersPage() {
         <DndContext sensors={sensors} collisionDetection={pointerWithin}
           measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
           onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          {/* Always mounted, same size, at all times (never conditionally rendered/resized) —
-              even just appearing or changing height right as a folder drag starts would shift
-              every row below it down, moving each folder's actual position out from under
-              wherever the drag interaction (or a test) had already measured it a moment
-              earlier. Toggling opacity/pointer-events/border color instead keeps layout — and
-              therefore every row's position — completely stable through the whole drag. */}
-          <DroppableRow id="root" testId="folder-root-drop-zone"
-            className={cn(
-              'flex items-center gap-2 px-5 py-3 mb-3 rounded-lg border-2 border-dashed text-sm transition-opacity',
-              active?.kind === 'folder'
-                ? 'border-slate-300 text-slate-500 opacity-100'
-                : 'border-transparent text-transparent opacity-0 pointer-events-none select-none',
-            )}>
-            <CornerLeftUp className="w-4 h-4 shrink-0" /> Drop here to move to the top level
-          </DroppableRow>
+          {/* Absolutely positioned, not part of normal flow — always mounted (never
+              conditionally rendered) and toggled by opacity/pointer-events only, so it never
+              affects layout either way: not a permanent gap above the folder card while
+              inactive, and no shift of every row's position out from under wherever the drag
+              interaction (or a test) had just measured it, right as a drag starts. */}
+          <div className="relative">
+            <DroppableRow id="root" testId="folder-root-drop-zone"
+              className={cn(
+                'absolute inset-x-0 bottom-full mb-2 flex items-center gap-2 px-5 py-3 rounded-lg border-2 border-dashed bg-white text-sm transition-opacity z-10',
+                active?.kind === 'folder'
+                  ? 'border-slate-300 text-slate-500 opacity-100'
+                  : 'border-transparent text-transparent opacity-0 pointer-events-none select-none',
+              )}>
+              <CornerLeftUp className="w-4 h-4 shrink-0" /> Drop here to move to the top level
+            </DroppableRow>
 
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-            {folders.length > 0 && (
-              <FolderTree
-                folders={folders} depth={0}
-                byFolder={byFolder} decrypted={decrypted}
-                expanded={expanded} toggleExpand={toggleExpand} activeFilter={activeFilter}
-                editingId={editingId} editName={editName}
-                setEditingId={setEditingId} setEditName={setEditName}
-                onUpdate={updateFolder} onDelete={deleteFolder}
-                onAddCredential={id => navigate(`/credentials/new?folderId=${id}&returnTo=${encodeURIComponent('/folders')}`)}
-                onOpenCredential={id => navigate(`/credentials/${id}`)}
-                onDeleteCredential={handleDeleteCredential}
-                onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
-                selectedIds={selectedIds} onToggleSelect={toggleSelect}
-              />
-            )}
+            <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+              {folders.length > 0 && (
+                <FolderTree
+                  folders={folders} depth={0}
+                  byFolder={byFolder} decrypted={decrypted}
+                  expanded={expanded} toggleExpand={toggleExpand} activeFilter={activeFilter}
+                  editingId={editingId} editName={editName}
+                  setEditingId={setEditingId} setEditName={setEditName}
+                  onUpdate={updateFolder} onDelete={deleteFolder}
+                  onAddCredential={id => navigate(`/credentials/new?folderId=${id}&returnTo=${encodeURIComponent('/folders')}`)}
+                  onOpenCredential={id => navigate(`/credentials/${id}`)}
+                  onDeleteCredential={handleDeleteCredential}
+                  onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                  selectedIds={selectedIds} onToggleSelect={toggleSelect}
+                />
+              )}
 
-            {unassigned.length > 0 && (
-              <div>
-                {folders.length > 0 && (
-                  <DroppableRow id="unassigned" className="px-5 py-2 bg-slate-50">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Unassigned</p>
-                  </DroppableRow>
-                )}
-                <div className="divide-y divide-slate-100">
-                  {unassigned.map(cred => (
-                    <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
-                      onOpen={() => navigate(`/credentials/${cred.id}`)}
-                      onDelete={e => handleDeleteCredential(cred.id, e)}
-                      onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
-                      draggable selectable
-                      selected={selectedIds.has(cred.id)}
-                      onToggleSelect={() => toggleSelect(cred.id)}
-                    />
-                  ))}
+              {unassigned.length > 0 && (
+                <div>
+                  {folders.length > 0 && (
+                    <DroppableRow id="unassigned" className="px-5 py-2 bg-slate-50">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Unassigned</p>
+                    </DroppableRow>
+                  )}
+                  <div className="divide-y divide-slate-100">
+                    {unassigned.map(cred => (
+                      <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
+                        onOpen={() => navigate(`/credentials/${cred.id}`)}
+                        onDelete={e => handleDeleteCredential(cred.id, e)}
+                        onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+                        draggable selectable
+                        selected={selectedIds.has(cred.id)}
+                        onToggleSelect={() => toggleSelect(cred.id)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <DragOverlay>

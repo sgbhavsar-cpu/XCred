@@ -132,7 +132,7 @@ export default function TagsPage() {
   const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleCredentials.map(c => c.id)));
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Tags</h1>
