@@ -16,7 +16,7 @@ const PRESET_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf
 
 export default function TagsPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkTags } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkTags, copyPassword, duplicateCredential } = useDecryptedCredentials();
 
   const [tags, setTags] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -92,6 +92,22 @@ export default function TagsPage() {
       await deleteCredential(id);
       toast.success('Credential deleted.');
     } catch { toast.error('Failed to delete.'); }
+  };
+
+  const handleDuplicateCredential = async (id: string) => {
+    try {
+      const newId = await duplicateCredential(id);
+      if (!newId) { toast.error('Failed to duplicate credential.'); return; }
+      toast.success('Credential duplicated.');
+      navigate(`/credentials/${newId}/edit`);
+    } catch { toast.error('Failed to duplicate credential.'); }
+  };
+
+  const handleCopyPassword = async (id: string) => {
+    try {
+      const ok = await copyPassword(id);
+      toast[ok ? 'success' : 'error'](ok ? 'Password copied to clipboard.' : 'Nothing to copy for this credential.');
+    } catch { toast.error('Failed to copy password.'); }
   };
 
   const applyBulkTagEdit = async (changes: { addTagIds: string[]; removeTagIds: string[] }) => {
@@ -276,6 +292,9 @@ export default function TagsPage() {
                       {members.map(cred => (
                         <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                           onOpen={() => navigate(`/credentials/${cred.id}`)}
+                          onEdit={() => navigate(`/credentials/${cred.id}/edit`)}
+                          onDuplicate={() => handleDuplicateCredential(cred.id)}
+                          onCopyPassword={() => handleCopyPassword(cred.id)}
                           onDelete={e => handleDeleteCredential(cred.id, e)}
                           onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                           indent selectable
@@ -301,6 +320,9 @@ export default function TagsPage() {
                 {untagged.map(cred => (
                   <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                     onOpen={() => navigate(`/credentials/${cred.id}`)}
+                    onEdit={() => navigate(`/credentials/${cred.id}/edit`)}
+                    onDuplicate={() => handleDuplicateCredential(cred.id)}
+                    onCopyPassword={() => handleCopyPassword(cred.id)}
                     onDelete={e => handleDeleteCredential(cred.id, e)}
                     onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                     selectable

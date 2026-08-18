@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
-import { decryptCredentialData } from '@/lib/vault';
+import { decryptCredentialData, encryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
+import type { CredentialPayload } from '@/lib/vault';
 import { credentialTypeLabel } from '@/lib/utils';
 
 export interface CredentialListItem {
@@ -26,7 +27,7 @@ export interface DecryptedCredentialMeta {
 /** Shared by Credentials/Folders/Tags pages: fetches every credential the user can see and
  *  decrypts its display name/username once, so each page just needs to group/filter the result. */
 export function useDecryptedCredentials() {
-  const { privateKey } = useAuthStore();
+  const { privateKey, publicKey } = useAuthStore();
   const [credentials, setCredentials] = useState<CredentialListItem[]>([]);
   const [decrypted, setDecrypted] = useState<Map<string, DecryptedCredentialMeta>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -91,5 +92,45 @@ export function useDecryptedCredentials() {
     return res.data.data as { updated: number; skipped: number };
   };
 
-  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkTags };
+  /** Copies this credential's primary sensitive field (the first `password`-type field for its
+   *  type — e.g. "password" for a login, "passphrase" for an SSH key, "keyValue" for an API
+   *  key) to the clipboard, logging it the same way CredentialDetailPage's own copy buttons do.
+   *  Returns false if the type has no password-type field at all, or the credential can't be
+   *  decrypted — callers use this to show a clear error rather than a silent no-op. */
+  const copyPassword = async (id: string): Promise<boolean> => {
+    const item = credentials.find(c => c.id === id);
+    if (!item || !privateKey) return false;
+    const passwordField = (CREDENTIAL_FIELDS[item.type] ?? []).find(f => f.type === 'password');
+    if (!passwordField) return false;
+    const data = await decryptCredentialData(item.encryptedData, item.dataIv, item.encryptedCredentialKey, privateKey);
+    const value = data[passwordField.key];
+    if (!value) return false;
+    await navigator.clipboard.writeText(value);
+    api.post(`/credentials/${id}/copy`, null, { params: { field: passwordField.key } }).catch(() => {});
+    return true;
+  };
+
+  /** Decrypts a credential and re-encrypts the same data (with " (Copy)" appended to the name)
+   *  as a brand-new credential carrying the same type/folder/group/tags — for "duplicate, then
+   *  tweak something" rather than starting a new one from scratch. Returns the new id, or null
+   *  if it couldn't be duplicated (caller navigates to /credentials/<id>/edit with it). */
+  const duplicateCredential = async (id: string): Promise<string | null> => {
+    const item = credentials.find(c => c.id === id);
+    if (!item || !privateKey || !publicKey) return null;
+    const data = await decryptCredentialData(item.encryptedData, item.dataIv, item.encryptedCredentialKey, privateKey);
+    const payload: CredentialPayload = { ...data, name: `${data.name ?? credentialTypeLabel(item.type)} (Copy)` };
+    const { encryptedData, dataIv, encryptedCredentialKey } = await encryptCredentialData(payload, publicKey);
+    const res = await api.post('/credentials', {
+      type: item.type,
+      encryptedData, dataIv, encryptedCredentialKey,
+      expiryDate: item.expiryDate,
+      folderId: item.folderId,
+      credentialGroupId: item.credentialGroupId,
+      tagIds: item.tags.map(t => t.id),
+    });
+    await refetch();
+    return res.data.data.id as string;
+  };
+
+  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkTags, copyPassword, duplicateCredential };
 }

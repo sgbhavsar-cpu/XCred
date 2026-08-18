@@ -1,18 +1,27 @@
-import { Eye, Trash2, GripVertical } from 'lucide-react';
+import { Eye, Edit2, CopyPlus, KeyRound, Trash2, GripVertical } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, cn } from '@/lib/utils';
+import { CREDENTIAL_FIELDS } from '@/lib/vault';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
 
 /** Shared row rendering used by the Credentials, Folders, and Tags pages so an expanded
  *  group/folder/tag looks identical to the flat credential list. `draggable` opts a row into
  *  dnd-kit dragging (id `cred:<id>`, see useCredentialDnd) and `selectable` adds a bulk-edit
- *  checkbox — both default off so pages that don't need them (e.g. Tags) are unaffected. */
+ *  checkbox — both default off so pages that don't need them (e.g. Tags) are unaffected.
+ *  `onEdit`/`onDuplicate`/`onCopyPassword` are optional too, so a caller that doesn't wire them
+ *  up (there currently isn't one, but keeps this component reusable) just gets View/Delete as
+ *  before. The Copy Password button only renders when this credential's type actually has a
+ *  password-type field — nothing to copy for types that don't. */
 export default function CredentialRow({
-  cred, decrypted, onOpen, onDelete, onTagClick, indent, draggable, selectable, selected, onToggleSelect,
+  cred, decrypted, onOpen, onEdit, onDuplicate, onCopyPassword, onDelete, onTagClick,
+  indent, draggable, selectable, selected, onToggleSelect,
 }: {
   cred: CredentialListItem;
   decrypted?: DecryptedCredentialMeta;
   onOpen: () => void;
+  onEdit?: () => void;
+  onDuplicate?: () => void;
+  onCopyPassword?: () => void;
   onDelete: (e: React.MouseEvent) => void;
   onTagClick: (tagId: string) => void;
   indent?: boolean;
@@ -22,6 +31,7 @@ export default function CredentialRow({
   onToggleSelect?: () => void;
 }) {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
+  const hasPasswordField = (CREDENTIAL_FIELDS[cred.type] ?? []).some(f => f.type === 'password');
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `cred:${cred.id}`,
     disabled: !draggable,
@@ -74,6 +84,24 @@ export default function CredentialRow({
           className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="View">
           <Eye className="w-3.5 h-3.5" />
         </button>
+        {onEdit && (
+          <button onClick={e => { e.stopPropagation(); onEdit(); }}
+            className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Edit">
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {onCopyPassword && hasPasswordField && (
+          <button onClick={e => { e.stopPropagation(); onCopyPassword(); }}
+            className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Copy password">
+            <KeyRound className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {onDuplicate && (
+          <button onClick={e => { e.stopPropagation(); onDuplicate(); }}
+            className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Duplicate">
+            <CopyPlus className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button onClick={onDelete}
           className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
           <Trash2 className="w-3.5 h-3.5" />

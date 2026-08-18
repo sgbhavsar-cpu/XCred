@@ -26,7 +26,7 @@ interface CredGroupOption { id: string; name: string }
 
 export default function FoldersPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign, copyPassword, duplicateCredential } = useDecryptedCredentials();
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
@@ -133,6 +133,22 @@ export default function FoldersPage() {
       await deleteCredential(id);
       toast.success('Credential deleted.');
     } catch { toast.error('Failed to delete.'); }
+  };
+
+  const handleDuplicateCredential = async (id: string) => {
+    try {
+      const newId = await duplicateCredential(id);
+      if (!newId) { toast.error('Failed to duplicate credential.'); return; }
+      toast.success('Credential duplicated.');
+      navigate(`/credentials/${newId}/edit`);
+    } catch { toast.error('Failed to duplicate credential.'); }
+  };
+
+  const handleCopyPassword = async (id: string) => {
+    try {
+      const ok = await copyPassword(id);
+      toast[ok ? 'success' : 'error'](ok ? 'Password copied to clipboard.' : 'Nothing to copy for this credential.');
+    } catch { toast.error('Failed to copy password.'); }
   };
 
   const { sensors, active, handleDragStart, handleDragEnd } = useCredentialDnd(async (kind, dragId, targetId) => {
@@ -283,6 +299,9 @@ export default function FoldersPage() {
                   onUpdate={updateFolder} onDelete={deleteFolder}
                   onAddCredential={id => navigate(`/credentials/new?folderId=${id}&returnTo=${encodeURIComponent('/folders')}`)}
                   onOpenCredential={id => navigate(`/credentials/${id}`)}
+                  onEditCredential={id => navigate(`/credentials/${id}/edit`)}
+                  onDuplicateCredential={handleDuplicateCredential}
+                  onCopyPassword={handleCopyPassword}
                   onDeleteCredential={handleDeleteCredential}
                   onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                   selectedIds={selectedIds} onToggleSelect={toggleSelect}
@@ -300,6 +319,9 @@ export default function FoldersPage() {
                     {unassigned.map(cred => (
                       <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                         onOpen={() => navigate(`/credentials/${cred.id}`)}
+                        onEdit={() => navigate(`/credentials/${cred.id}/edit`)}
+                        onDuplicate={() => handleDuplicateCredential(cred.id)}
+                        onCopyPassword={() => handleCopyPassword(cred.id)}
                         onDelete={e => handleDeleteCredential(cred.id, e)}
                         onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                         draggable selectable
@@ -363,7 +385,7 @@ function DroppableRow({ id, dragId, onClick, className, children, testId }: {
 function FolderTree({
   folders, depth, byFolder, decrypted, expanded, toggleExpand, activeFilter,
   editingId, editName, setEditingId, setEditName, onUpdate, onDelete,
-  onAddCredential, onOpenCredential, onDeleteCredential, onTagClick,
+  onAddCredential, onOpenCredential, onEditCredential, onDuplicateCredential, onCopyPassword, onDeleteCredential, onTagClick,
   selectedIds, onToggleSelect,
 }: {
   folders: FolderItem[]; depth: number;
@@ -373,6 +395,7 @@ function FolderTree({
   setEditingId: (id: string | null) => void; setEditName: (name: string) => void;
   onUpdate: (id: string) => void; onDelete: (id: string) => void;
   onAddCredential: (id: string) => void; onOpenCredential: (id: string) => void;
+  onEditCredential: (id: string) => void; onDuplicateCredential: (id: string) => void; onCopyPassword: (id: string) => void;
   onDeleteCredential: (id: string, e: React.MouseEvent) => void; onTagClick: (tagId: string) => void;
   selectedIds: Set<string>; onToggleSelect: (id: string) => void;
 }) {
@@ -440,6 +463,9 @@ function FolderTree({
                   {members.map(cred => (
                     <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                       onOpen={() => onOpenCredential(cred.id)}
+                      onEdit={() => onEditCredential(cred.id)}
+                      onDuplicate={() => onDuplicateCredential(cred.id)}
+                      onCopyPassword={() => onCopyPassword(cred.id)}
                       onDelete={e => onDeleteCredential(cred.id, e)}
                       onTagClick={onTagClick}
                       indent draggable selectable
@@ -461,6 +487,7 @@ function FolderTree({
                   setEditingId={setEditingId} setEditName={setEditName}
                   onUpdate={onUpdate} onDelete={onDelete}
                   onAddCredential={onAddCredential} onOpenCredential={onOpenCredential}
+                  onEditCredential={onEditCredential} onDuplicateCredential={onDuplicateCredential} onCopyPassword={onCopyPassword}
                   onDeleteCredential={onDeleteCredential} onTagClick={onTagClick}
                   selectedIds={selectedIds} onToggleSelect={onToggleSelect}
                 />

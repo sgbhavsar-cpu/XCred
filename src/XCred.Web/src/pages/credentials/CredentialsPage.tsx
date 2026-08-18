@@ -27,7 +27,7 @@ const ICON_OPTIONS = ['🏦', '📧', '🌐', '📱', '🏢', '🚗', '🏥', '�
 export default function CredentialsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign } = useDecryptedCredentials();
+  const { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, copyPassword, duplicateCredential } = useDecryptedCredentials();
 
   // URL-driven context filters (linked from Folders/Tags pages)
   const folderFilter = searchParams.get('folder');
@@ -170,6 +170,22 @@ export default function CredentialsPage() {
       await deleteCredential(id);
       toast.success('Credential deleted.');
     } catch { toast.error('Failed to delete.'); }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const newId = await duplicateCredential(id);
+      if (!newId) { toast.error('Failed to duplicate credential.'); return; }
+      toast.success('Credential duplicated.');
+      navigate(`/credentials/${newId}/edit`);
+    } catch { toast.error('Failed to duplicate credential.'); }
+  };
+
+  const handleCopyPassword = async (id: string) => {
+    try {
+      const ok = await copyPassword(id);
+      toast[ok ? 'success' : 'error'](ok ? 'Password copied to clipboard.' : 'Nothing to copy for this credential.');
+    } catch { toast.error('Failed to copy password.'); }
   };
 
   const createGroup = async () => {
@@ -372,6 +388,9 @@ export default function CredentialsPage() {
                         {members.map(cred => (
                           <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                             onOpen={() => navigate(`/credentials/${cred.id}`)}
+                            onEdit={() => navigate(`/credentials/${cred.id}/edit`)}
+                            onDuplicate={() => handleDuplicate(cred.id)}
+                            onCopyPassword={() => handleCopyPassword(cred.id)}
                             onDelete={e => handleDelete(cred.id, e)}
                             onTagClick={tagId => setSearchParams({ tag: tagId })}
                             indent draggable selectable
@@ -397,6 +416,9 @@ export default function CredentialsPage() {
                   {ungrouped.map(cred => (
                     <CredentialRow key={cred.id} cred={cred} decrypted={decrypted.get(cred.id)}
                       onOpen={() => navigate(`/credentials/${cred.id}`)}
+                      onEdit={() => navigate(`/credentials/${cred.id}/edit`)}
+                      onDuplicate={() => handleDuplicate(cred.id)}
+                      onCopyPassword={() => handleCopyPassword(cred.id)}
                       onDelete={e => handleDelete(cred.id, e)}
                       onTagClick={tagId => setSearchParams({ tag: tagId })}
                       draggable selectable
