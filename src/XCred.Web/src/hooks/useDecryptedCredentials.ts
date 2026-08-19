@@ -22,6 +22,10 @@ export interface CredentialListItem {
 export interface DecryptedCredentialMeta {
   name: string;
   username?: string;
+  // True when the type has no password-type field at all (not applicable) or a password-type
+  // field is actually filled in; false only when the type has one and it's empty — that's the
+  // "missing password" signal the Credentials/Folders/Tags toolbar filter looks for.
+  hasPassword: boolean;
 }
 
 /** Shared by Credentials/Folders/Tags pages: fetches every credential the user can see and
@@ -44,12 +48,14 @@ export function useDecryptedCredentials() {
       await Promise.all(items.map(async item => {
         try {
           const fields = await decryptCredentialData(item.encryptedData, item.dataIv, item.encryptedCredentialKey, privateKey);
+          const passwordField = (CREDENTIAL_FIELDS[item.type] ?? []).find(f => f.type === 'password');
           map.set(item.id, {
             name: (fields.name as string) ?? credentialTypeLabel(item.type),
             username: (fields.username ?? fields.email ?? fields.cardholderName ?? fields.ssid) as string | undefined,
+            hasPassword: !passwordField || !!(fields[passwordField.key] as string | undefined)?.trim(),
           });
         } catch {
-          map.set(item.id, { name: credentialTypeLabel(item.type) });
+          map.set(item.id, { name: credentialTypeLabel(item.type), hasPassword: true });
         }
       }));
       setDecrypted(map);

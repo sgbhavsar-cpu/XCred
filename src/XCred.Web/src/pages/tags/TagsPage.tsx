@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
-import { cn } from '@/lib/utils';
+import { cn, isExpired } from '@/lib/utils';
+import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
 import SelectAllButton from '@/components/SelectAllButton';
+import ToolbarIconButton from '@/components/ToolbarIconButton';
 import BulkTagEditModal from '@/components/BulkTagEditModal';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
@@ -28,6 +30,8 @@ export default function TagsPage() {
   const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
+  const [noPasswordFilter, setNoPasswordFilter] = useState(false);
+  const [expiredFilter, setExpiredFilter] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
 
@@ -122,13 +126,20 @@ export default function TagsPage() {
   };
 
   const matchesSearch = (c: (typeof credentials)[number]) => {
+    if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
+    if (expiredFilter && !isExpired(c.expiryDate)) return false;
     if (!search) return true;
     const d = decrypted.get(c.id);
     const q = search.toLowerCase();
     return (d?.name ?? '').toLowerCase().includes(q) || (d?.username ?? '').toLowerCase().includes(q);
   };
-  const activeFilter = !!search;
+  const activeFilter = !!search || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+
+  const handleExportCsv = () => {
+    downloadCsv(`xcred-tags-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
+    toast.success(`Exported ${visibleCredentials.length} credential${visibleCredentials.length === 1 ? '' : 's'} to CSV.`);
+  };
 
   const byTag = new Map<string, typeof credentials>();
   const untagged: typeof credentials = [];
@@ -142,6 +153,11 @@ export default function TagsPage() {
 
   const loading = tagsLoading || credsLoading;
   const visibleTags = tags.filter(t => !activeFilter || (byTag.get(t.id)?.length ?? 0) > 0);
+  // Same shape as Folders' nothingAtAll/nothingVisible pair: a tagless account can still have
+  // credentials to show under Untagged, so "No tags yet" must require there being nothing at
+  // all to show — not just zero tags — or those credentials (and this toolbar's filters) would
+  // be unreachable until the user creates a tag first.
+  const nothingAtAll = tags.length === 0 && untagged.length === 0;
   const nothingVisible = activeFilter && visibleTags.length === 0 && untagged.length === 0;
 
   const allVisibleSelected = visibleCredentials.length > 0 && visibleCredentials.every(c => selectedIds.has(c.id));
@@ -195,6 +211,12 @@ export default function TagsPage() {
             placeholder="Search by name or username…"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
+        <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
+          title="Show only credentials missing a password" />
+        <ToolbarIconButton icon={AlertTriangle} active={expiredFilter} onClick={() => setExpiredFilter(v => !v)}
+          title="Show only expired credentials" />
+        <ToolbarIconButton icon={FileSpreadsheet} onClick={handleExportCsv} disabled={visibleCredentials.length === 0}
+          title="Export filtered list to CSV" />
         <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
       </div>
 
@@ -202,7 +224,7 @@ export default function TagsPage() {
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
-      ) : tags.length === 0 ? (
+      ) : nothingAtAll ? (
         <div className="text-center py-16 text-slate-400">
           <Tag className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">No tags yet.</p>

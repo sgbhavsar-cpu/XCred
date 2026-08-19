@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp } from 'lucide-react';
+import { Plus, Search, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
 import api from '@/api/client';
-import { cn, credentialTypeLabel } from '@/lib/utils';
+import { cn, credentialTypeLabel, isExpired } from '@/lib/utils';
+import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
 import { useCredentialDnd } from '@/hooks/useCredentialDnd';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
 import SelectAllButton from '@/components/SelectAllButton';
+import ToolbarIconButton from '@/components/ToolbarIconButton';
 import BulkEditModal from '@/components/BulkEditModal';
 
 interface FolderItem {
@@ -40,6 +42,8 @@ export default function FoldersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [search, setSearch] = useState('');
+  const [noPasswordFilter, setNoPasswordFilter] = useState(false);
+  const [expiredFilter, setExpiredFilter] = useState(false);
 
   const loadFolders = async () => {
     setFoldersLoading(true);
@@ -176,6 +180,8 @@ export default function FoldersPage() {
   };
 
   const matchesSearch = (c: CredentialListItem) => {
+    if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
+    if (expiredFilter && !isExpired(c.expiryDate)) return false;
     if (!search) return true;
     const d = decrypted.get(c.id);
     const q = search.toLowerCase();
@@ -183,8 +189,13 @@ export default function FoldersPage() {
       || (d?.username ?? '').toLowerCase().includes(q)
       || c.tags.some(t => t.name.toLowerCase().includes(q));
   };
-  const activeFilter = !!search;
+  const activeFilter = !!search || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+
+  const handleExportCsv = () => {
+    downloadCsv(`xcred-folders-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
+    toast.success(`Exported ${visibleCredentials.length} credential${visibleCredentials.length === 1 ? '' : 's'} to CSV.`);
+  };
 
   const byFolder = new Map<string, CredentialListItem[]>();
   const unassigned: CredentialListItem[] = [];
@@ -246,6 +257,12 @@ export default function FoldersPage() {
             placeholder="Search by name, username, or tag…"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
+        <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
+          title="Show only credentials missing a password" />
+        <ToolbarIconButton icon={AlertTriangle} active={expiredFilter} onClick={() => setExpiredFilter(v => !v)}
+          title="Show only expired credentials" />
+        <ToolbarIconButton icon={FileSpreadsheet} onClick={handleExportCsv} disabled={visibleCredentials.length === 0}
+          title="Export filtered list to CSV" />
         <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
       </div>
 

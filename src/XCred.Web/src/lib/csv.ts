@@ -1,3 +1,5 @@
+import { credentialTypeLabel, formatDate } from './utils';
+
 // Minimal RFC4180-ish CSV parser — no external dependency needed for what credential
 // exports (Chrome/Firefox/Bitwarden/LastPass/1Password, or someone's own spreadsheet)
 // actually produce: quoted fields, commas/newlines inside quotes, doubled `""` as an
@@ -78,4 +80,47 @@ export function guessColumnMapping(headers: string[]): CsvColumnMapping {
     password: find(HEADER_ALIASES.password),
     notes: find(HEADER_ALIASES.notes),
   };
+}
+
+function csvEscape(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Inverse of parseCsv — RFC4180-ish, CRLF row endings. */
+export function rowsToCsv(headers: string[], rows: string[][]): string {
+  return [headers, ...rows].map(r => r.map(csvEscape).join(',')).join('\r\n');
+}
+
+export function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Shared by the Credentials/Folders/Tags toolbar export button — a metadata/audit summary,
+ *  not a secrets dump: actual password *values* are never included (only whether one's set),
+ *  since this is a plain-text file that ends up sitting unencrypted on disk. Someone who
+ *  genuinely wants every decrypted field belongs at Settings' "Export All as Plain JSON"
+ *  instead, which already carries that warning. */
+export function buildCredentialsCsv(
+  items: Array<{ id: string; type: string; expiryDate: string | null; updatedAt: string; tags: Array<{ name: string }> }>,
+  decrypted: Map<string, { name: string; username?: string; hasPassword: boolean }>,
+): string {
+  const rows = items.map(c => {
+    const d = decrypted.get(c.id);
+    return [
+      d?.name ?? credentialTypeLabel(c.type),
+      credentialTypeLabel(c.type),
+      d?.username ?? '',
+      c.tags.map(t => t.name).join('; '),
+      d?.hasPassword === false ? 'No' : 'Yes',
+      c.expiryDate ? formatDate(c.expiryDate) : '',
+      formatDate(c.updatedAt),
+    ];
+  });
+  return rowsToCsv(['Name', 'Type', 'Username', 'Tags', 'Has Password', 'Expiry Date', 'Last Updated'], rows);
 }

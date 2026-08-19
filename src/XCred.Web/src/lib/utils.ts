@@ -18,6 +18,12 @@ export function daysUntil(date: string | Date): number {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+// Matches the Dashboard's expired-alert convention (DashboardPage.tsx): daysUntilExpiry < 0
+// is expired, === 0 ("expires today") is not.
+export function isExpired(expiryDate: string | null | undefined): boolean {
+  return !!expiryDate && daysUntil(expiryDate) < 0;
+}
+
 export function isValidUrl(value: string): boolean {
   if (!value.trim()) return false;
   try {

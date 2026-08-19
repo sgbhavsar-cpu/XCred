@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Filter, RefreshCw, FolderOpen, ArrowLeft, X,
-  ChevronDown, ChevronRight, Boxes, Settings, Trash2,
+  ChevronDown, ChevronRight, Boxes, Settings, Trash2, ShieldOff, AlertTriangle, FileSpreadsheet,
 } from 'lucide-react';
 import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
 import api from '@/api/client';
@@ -11,10 +11,12 @@ import { useCredentialDnd } from '@/hooks/useCredentialDnd';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
 import SelectAllButton from '@/components/SelectAllButton';
+import ToolbarIconButton from '@/components/ToolbarIconButton';
 import BulkEditModal from '@/components/BulkEditModal';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
-import { credentialTypeLabel } from '@/lib/utils';
+import { credentialTypeLabel, isExpired } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
 import toast from 'react-hot-toast';
 
 interface CredGroup { id: string; name: string; icon: string; credentialCount: number }
@@ -38,6 +40,8 @@ export default function CredentialsPage() {
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [noPasswordFilter, setNoPasswordFilter] = useState(false);
+  const [expiredFilter, setExpiredFilter] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
@@ -94,12 +98,14 @@ export default function CredentialsPage() {
 
   const clearContextFilter = () => setSearchParams({});
   const isFiltered = !!(folderFilter || tagFilter);
-  const activeFilter = !!(search || filterType || isFiltered);
+  const activeFilter = !!(search || filterType || isFiltered || noPasswordFilter || expiredFilter);
 
   const matchesFilters = (c: (typeof credentials)[number]) => {
     if (folderFilter && c.folderId !== folderFilter) return false;
     if (tagFilter && !c.tags.some(t => t.id === tagFilter)) return false;
     if (filterType && c.type !== filterType) return false;
+    if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
+    if (expiredFilter && !isExpired(c.expiryDate)) return false;
     if (search) {
       const d = decrypted.get(c.id);
       const matchText = (d?.name ?? '').toLowerCase().includes(search.toLowerCase())
@@ -111,6 +117,11 @@ export default function CredentialsPage() {
   };
 
   const filtered = credentials.filter(matchesFilters);
+
+  const handleExportCsv = () => {
+    downloadCsv(`xcred-credentials-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(filtered, decrypted));
+    toast.success(`Exported ${filtered.length} credential${filtered.length === 1 ? '' : 's'} to CSV.`);
+  };
 
   const byGroup = new Map<string, typeof credentials>();
   const ungrouped: typeof credentials = [];
@@ -316,6 +327,12 @@ export default function CredentialsPage() {
             {ALL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
           </select>
         </div>
+        <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
+          title="Show only credentials missing a password" />
+        <ToolbarIconButton icon={AlertTriangle} active={expiredFilter} onClick={() => setExpiredFilter(v => !v)}
+          title="Show only expired credentials" />
+        <ToolbarIconButton icon={FileSpreadsheet} onClick={handleExportCsv} disabled={filtered.length === 0}
+          title="Export filtered list to CSV" />
         <SelectAllButton allSelected={allFilteredSelected} onToggle={toggleSelectAll} disabled={filtered.length === 0} />
         <button onClick={refreshAll} title="Refresh" className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
           <RefreshCw className="w-4 h-4 text-slate-500" />
