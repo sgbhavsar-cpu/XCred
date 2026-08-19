@@ -259,9 +259,16 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
           final name = fields['name'] as String?;
           final subtitle = (fields['username'] ?? fields['email'] ?? fields['emailAddress'] ??
               fields['cardholderName'] ?? fields['ssid']) as String?;
+          FieldDef? passwordField;
+          for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
+            if (f.type == 'password') { passwordField = f; break; }
+          }
+          final hasPassword = passwordField == null ||
+              ((fields[passwordField.key] as String?)?.trim().isNotEmpty ?? false);
           decrypted[item.id] = DecryptedCredentialMeta(
             name: (name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type),
             subtitle: subtitle,
+            hasPassword: hasPassword,
           );
         } catch (_) {
           // A single undecryptable credential (corrupt cache row, key mismatch after a

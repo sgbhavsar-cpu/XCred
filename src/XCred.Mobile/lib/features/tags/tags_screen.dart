@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,9 +8,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/error_messages.dart';
 import '../../core/models/credential_models.dart';
 import '../../core/models/folder_tag_models.dart';
+import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/vault/credential_csv.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
+import '../../core/widgets/toolbar_icon_button.dart';
 import '../credentials/widgets/bulk_tags_sheet.dart';
 import '../credentials/widgets/credential_row.dart';
 
@@ -34,6 +40,8 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
   final Set<String> _expanded = {};
   final _searchController = TextEditingController();
   String _search = '';
+  bool _noPasswordFilter = false;
+  bool _expiredFilter = false;
   final Set<String> _selectedIds = {};
 
   @override
@@ -43,11 +51,19 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
   }
 
   bool _matchesSearch(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
+    if (_noPasswordFilter && (decrypted[c.id]?.hasPassword ?? true)) return false;
+    if (_expiredFilter && !c.isExpired) return false;
     if (_search.isEmpty) return true;
     final q = _search.toLowerCase();
     final meta = decrypted[c.id];
     return (meta?.name ?? '').toLowerCase().contains(q) ||
         (meta?.subtitle ?? '').toLowerCase().contains(q);
+  }
+
+  Future<void> _exportCsv(List<CredentialListItem> items, Map<String, DecryptedCredentialMeta> decrypted) async {
+    final csv = buildCredentialsCsv(items, decrypted);
+    final filename = 'xcred-tags-${DateTime.now().toIso8601String().split('T').first}.csv';
+    await ref.read(fileExchangeProvider).saveOrShare(filename, Uint8List.fromList(utf8.encode(csv)), 'text/csv');
   }
 
   Future<void> _refresh() async {
@@ -183,7 +199,7 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
   Widget build(BuildContext context) {
     final tagsAsync = ref.watch(tagListProvider);
     final vaultAsync = ref.watch(vaultProvider);
-    final activeFilter = _search.isNotEmpty;
+    final activeFilter = _search.isNotEmpty || _noPasswordFilter || _expiredFilter;
 
     final vault = vaultAsync.value;
     final byTag = <String, List<CredentialListItem>>{};
@@ -229,14 +245,37 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 20),
-                hintText: 'Search by name or username…',
-              ),
-              onChanged: (v) => setState(() => _search = v),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      prefixIcon: Icon(Icons.search, size: 20),
+                      hintText: 'Search by name or username…',
+                    ),
+                    onChanged: (v) => setState(() => _search = v),
+                  ),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.no_encryption_outlined,
+                  active: _noPasswordFilter,
+                  tooltip: 'Show only credentials missing a password',
+                  onPressed: () => setState(() => _noPasswordFilter = !_noPasswordFilter),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.warning_amber_outlined,
+                  active: _expiredFilter,
+                  tooltip: 'Show only expired credentials',
+                  onPressed: () => setState(() => _expiredFilter = !_expiredFilter),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.table_chart_outlined,
+                  tooltip: 'Export filtered list to CSV',
+                  onPressed: visibleCredentials.isEmpty ? null : () => _exportCsv(visibleCredentials, vault?.decrypted ?? const {}),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -251,7 +290,13 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
               data: (tags) {
                 if (vault == null) return const Center(child: CircularProgressIndicator());
 
-                if (tags.isEmpty) {
+                // A tagless account can still have credentials to show under Untagged, so
+                // this must require there being nothing at all to show — not just zero tags
+                // — or those credentials (and the toolbar's filter buttons) would be
+                // unreachable until the user creates a tag first. Same bug, same fix, as the
+                // web app's TagsPage.tsx (tags.length === 0 → tags.length === 0 && untagged
+                // .length === 0).
+                if (tags.isEmpty && untagged.isEmpty) {
                   return EmptyState(
                     icon: Icons.label_outline,
                     message: 'No tags yet.',

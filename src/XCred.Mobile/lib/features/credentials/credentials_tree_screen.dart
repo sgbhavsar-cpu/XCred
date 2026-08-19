@@ -1,15 +1,21 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/error_messages.dart';
 import '../../core/models/credential_models.dart';
+import '../../core/providers/core_providers.dart';
 import '../../core/providers/sync_providers.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/vault/credential_csv.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
+import '../../core/widgets/toolbar_icon_button.dart';
 import 'widgets/bulk_assign_sheet.dart';
 import 'widgets/credential_row.dart';
 
@@ -28,6 +34,8 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
   final _searchController = TextEditingController();
   String _search = '';
   String? _typeFilter;
+  bool _noPasswordFilter = false;
+  bool _expiredFilter = false;
   final Set<String> _expanded = {};
   final Set<String> _selectedIds = {};
 
@@ -49,6 +57,8 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
 
   bool _matches(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
     if (_typeFilter != null && c.type != _typeFilter) return false;
+    if (_noPasswordFilter && (decrypted[c.id]?.hasPassword ?? true)) return false;
+    if (_expiredFilter && !c.isExpired) return false;
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       final meta = decrypted[c.id];
@@ -65,6 +75,12 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
       ref.read(vaultProvider.notifier).refresh(),
       ref.read(credentialGroupsProvider.notifier).refresh(),
     ]);
+  }
+
+  Future<void> _exportCsv(List<CredentialListItem> filtered, Map<String, DecryptedCredentialMeta> decrypted) async {
+    final csv = buildCredentialsCsv(filtered, decrypted);
+    final filename = 'xcred-credentials-${DateTime.now().toIso8601String().split('T').first}.csv';
+    await ref.read(fileExchangeProvider).saveOrShare(filename, Uint8List.fromList(utf8.encode(csv)), 'text/csv');
   }
 
   static const _kGroupIconOptions = ['🏦', '📧', '🌐', '📱', '🏢', '🚗', '🏥', '📦'];
@@ -161,7 +177,7 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     final vaultAsync = ref.watch(vaultProvider);
     final groupsAsync = ref.watch(credentialGroupsProvider);
     final syncState = ref.watch(syncProvider);
-    final activeFilter = _search.isNotEmpty || _typeFilter != null;
+    final activeFilter = _search.isNotEmpty || _typeFilter != null || _noPasswordFilter || _expiredFilter;
     final filtered = vaultAsync.value == null
         ? const <CredentialListItem>[]
         : vaultAsync.value!.credentials.where((c) => _matches(c, vaultAsync.value!.decrypted)).toList();
@@ -212,10 +228,26 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
                     onChanged: (v) => setState(() => _search = v),
                   ),
                 ),
-                const SizedBox(width: 8),
                 _TypeFilterButton(
                   value: _typeFilter,
                   onChanged: (v) => setState(() => _typeFilter = v),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.no_encryption_outlined,
+                  active: _noPasswordFilter,
+                  tooltip: 'Show only credentials missing a password',
+                  onPressed: () => setState(() => _noPasswordFilter = !_noPasswordFilter),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.warning_amber_outlined,
+                  active: _expiredFilter,
+                  tooltip: 'Show only expired credentials',
+                  onPressed: () => setState(() => _expiredFilter = !_expiredFilter),
+                ),
+                ToolbarIconButton(
+                  icon: Icons.table_chart_outlined,
+                  tooltip: 'Export filtered list to CSV',
+                  onPressed: filtered.isEmpty ? null : () => _exportCsv(filtered, vaultAsync.value!.decrypted),
                 ),
               ],
             ),

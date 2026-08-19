@@ -140,7 +140,11 @@ class CredentialListItem {
 class DecryptedCredentialMeta {
   final String name;
   final String? subtitle;
-  const DecryptedCredentialMeta({required this.name, this.subtitle});
+  // True when the type has no password-type field at all (not applicable) or a password-type
+  // field is actually filled in; false only when the type has one and it's empty — the
+  // "missing password" signal the Credentials/Folders/Tags toolbar filter looks for.
+  final bool hasPassword;
+  const DecryptedCredentialMeta({required this.name, this.subtitle, this.hasPassword = true});
 }
 
 class CredentialGroupSummary {
