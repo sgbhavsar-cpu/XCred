@@ -42,3 +42,10 @@
 20. Common search should search from notes or any other field. If required we can implement elastic search if available on pc.
 21.
 
+===
+Docker stack up at http://localhost:18080 (login xcred_admin / LoginPassword#2026 / master password Admin@#1234%^&*())
+
+The dev backend (Docker Compose — API + SQL Server) should still be running at localhost:18080; the app's Server Setup screen expects http://10.0.2.2:18080 (the emulator's alias for the host machine).
+Test account: username xcred_admin, login password LoginPassword#2026, master password Admin@#1234%^&*().
+To reinstall/run the current app build once the emulator is up: flutter run -d emulator-5554 from src/XCred.Mobile (with flutter's bin on your PATH), or flutter test integration_test/<name>_test.dart -d emulator-5554 to run any of the integration tests we built
+
