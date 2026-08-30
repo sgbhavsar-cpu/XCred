@@ -26,6 +26,9 @@ export interface DecryptedCredentialMeta {
   // field is actually filled in; false only when the type has one and it's empty — that's the
   // "missing password" signal the Credentials/Folders/Tags toolbar filter looks for.
   hasPassword: boolean;
+  /** Full decrypted field set (see CREDENTIAL_FIELDS in lib/vault.ts), used by CredentialGridView
+   *  to render type-specific columns (address, password, transaction password/PIN, …). */
+  fields?: Record<string, string>;
 }
 
 /** Shared by Credentials/Folders/Tags pages: fetches every credential the user can see and
@@ -53,6 +56,7 @@ export function useDecryptedCredentials() {
             name: (fields.name as string) ?? credentialTypeLabel(item.type),
             username: (fields.username ?? fields.email ?? fields.cardholderName ?? fields.ssid) as string | undefined,
             hasPassword: !passwordField || !!(fields[passwordField.key] as string | undefined)?.trim(),
+            fields: fields as Record<string, string>,
           });
         } catch {
           map.set(item.id, { name: credentialTypeLabel(item.type), hasPassword: true });

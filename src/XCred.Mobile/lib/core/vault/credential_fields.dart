@@ -101,13 +101,15 @@ const Map<String, List<FieldDef>> kCredentialFields = {
   'BankAccount': [
     FieldDef(key: 'bankName', label: 'Bank Name', type: 'text'),
     FieldDef(key: 'accountHolderName', label: 'Account Holder Name', type: 'text'),
-    FieldDef(key: 'accountNumber', label: 'Account Number', type: 'password'),
+    FieldDef(key: 'accountNumber', label: 'Account Number', type: 'text'),
     FieldDef(key: 'ifscSwiftCode', label: 'IFSC / SWIFT Code', type: 'text'),
     FieldDef(key: 'branch', label: 'Branch', type: 'text', optional: true),
     FieldDef(key: 'accountType', label: 'Account Type', type: 'select', options: [
       'Savings', 'Current', 'Salary', 'Fixed Deposit', 'Loan', 'Other'
     ]),
     FieldDef(key: 'customerId', label: 'Customer ID (CIF)', type: 'text', optional: true),
+    FieldDef(key: 'loginPassword', label: 'Login Password', type: 'password'),
+    FieldDef(key: 'transactionPassword', label: 'Transaction Password', type: 'password'),
   ],
   'MobileBankingPin': [
     FieldDef(key: 'bankOrAppName', label: 'Bank / App Name', type: 'text'),
