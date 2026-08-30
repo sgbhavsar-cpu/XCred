@@ -6,7 +6,10 @@ import {
 } from 'lucide-react';
 import api from '@/api/client';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
+import { useViewMode } from '@/hooks/useViewMode';
 import CredentialRow from '@/components/CredentialRow';
+import CredentialGridView from '@/components/CredentialGridView';
+import ViewModeToggle from '@/components/ViewModeToggle';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -23,6 +26,7 @@ export default function CredentialsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { credentials, decrypted, loading, refetch, deleteCredential } = useDecryptedCredentials();
+  const { viewMode, setViewMode } = useViewMode();
 
   // URL-driven context filters (linked from Folders/Tags pages)
   const folderFilter = searchParams.get('folder');
@@ -255,12 +259,13 @@ export default function CredentialsPage() {
             {ALL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
           </select>
         </div>
+        <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         <button onClick={refreshAll} title="Refresh" className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
           <RefreshCw className="w-4 h-4 text-slate-500" />
         </button>
       </div>
 
-      {/* Tree: credential groups (expandable) + ungrouped credentials */}
+      {/* Grid view: flat spreadsheet of every credential matching the current search/type filter */}
       {anyLoading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
       ) : nothingAtAll ? (
@@ -269,6 +274,24 @@ export default function CredentialsPage() {
           <p className="font-medium">No credentials yet.</p>
           <button onClick={() => navigate('/credentials/new')} className="mt-4 text-indigo-600 text-sm hover:underline">Add your first credential →</button>
         </div>
+      ) : viewMode === 'grid' ? (
+        filtered.length === 0 ? (
+          <div className="text-center py-16 text-slate-400">
+            <p className="text-4xl mb-3">🔐</p>
+            <p className="font-medium">
+              {isFiltered ? `No credentials in this ${folderFilter ? 'folder' : 'tag'}.` : 'No credentials match your search.'}
+            </p>
+            {isFiltered && (
+              <button onClick={clearContextFilter} className="mt-3 text-indigo-600 text-sm hover:underline">← View all credentials</button>
+            )}
+          </div>
+        ) : (
+          <CredentialGridView credentials={filtered} decrypted={decrypted}
+            onOpen={id => navigate(`/credentials/${id}`)}
+            onDelete={handleDelete}
+            onTagClick={tagId => setSearchParams({ tag: tagId })}
+          />
+        )
       ) : visibleGroups.length === 0 && ungrouped.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <p className="text-4xl mb-3">🔐</p>

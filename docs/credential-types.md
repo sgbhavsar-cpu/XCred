@@ -108,11 +108,13 @@ which schemes are reliable vs. best-effort.
 |---|---|---|
 | Bank Name | text | |
 | Account Holder Name | text | |
-| Account Number | password | |
+| Account Number | text | visible, not masked |
 | IFSC / SWIFT Code | text | |
 | Branch | text | optional |
 | Account Type | select | Savings, Current, Salary, Fixed Deposit, Loan, Other |
 | Customer ID (CIF) | text | optional |
+| Login Password | password | for internet/mobile banking login |
+| Transaction Password | password | for authorizing transactions |
 
 Use a **Credential Group** (§5.4 of requirements.md) to tie a Bank Account credential together
 with its related Payment Card, netbanking Website Login, and Mobile Banking PIN credentials.

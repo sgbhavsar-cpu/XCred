@@ -106,11 +106,13 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   BankAccount: [
     { key: 'bankName', label: 'Bank Name', type: 'text' },
     { key: 'accountHolderName', label: 'Account Holder Name', type: 'text' },
-    { key: 'accountNumber', label: 'Account Number', type: 'password' },
+    { key: 'accountNumber', label: 'Account Number', type: 'text' },
     { key: 'ifscSwiftCode', label: 'IFSC / SWIFT Code', type: 'text' },
     { key: 'branch', label: 'Branch', type: 'text', optional: true },
     { key: 'accountType', label: 'Account Type', type: 'select', options: ['Savings', 'Current', 'Salary', 'Fixed Deposit', 'Loan', 'Other'] },
     { key: 'customerId', label: 'Customer ID (CIF)', type: 'text', optional: true },
+    { key: 'loginPassword', label: 'Login Password', type: 'password' },
+    { key: 'transactionPassword', label: 'Transaction Password', type: 'password' },
   ],
   MobileBankingPin: [
     { key: 'bankOrAppName', label: 'Bank / App Name', type: 'text' },

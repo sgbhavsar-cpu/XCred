@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, Search, Filter, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
-import { cn } from '@/lib/utils';
+import { cn, credentialTypeLabel } from '@/lib/utils';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
+import { useViewMode } from '@/hooks/useViewMode';
+import { CREDENTIAL_TYPES } from '@/lib/vault';
 import CredentialRow from '@/components/CredentialRow';
+import CredentialGridView from '@/components/CredentialGridView';
+import ViewModeToggle from '@/components/ViewModeToggle';
 
 interface FolderItem {
   id: string;
@@ -20,6 +24,9 @@ interface FolderItem {
 export default function FoldersPage() {
   const navigate = useNavigate();
   const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential } = useDecryptedCredentials();
+  const { viewMode, setViewMode } = useViewMode();
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('');
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
@@ -84,8 +91,22 @@ export default function FoldersPage() {
     } catch { toast.error('Failed to delete.'); }
   };
 
+  const matchesFilters = (c: CredentialListItem) => {
+    if (filterType && c.type !== filterType) return false;
+    if (search) {
+      const d = decrypted.get(c.id);
+      const matchText = (d?.name ?? '').toLowerCase().includes(search.toLowerCase())
+        || (d?.username ?? '').toLowerCase().includes(search.toLowerCase())
+        || c.tags.some(t => t.name.toLowerCase().includes(search.toLowerCase()));
+      if (!matchText) return false;
+    }
+    return true;
+  };
+  const activeFilter = !!(search || filterType);
+  const filteredCredentials = credentials.filter(matchesFilters);
+
   const byFolder = new Map<string, CredentialListItem[]>();
-  for (const c of credentials) {
+  for (const c of filteredCredentials) {
     if (!c.folderId) continue;
     if (!byFolder.has(c.folderId)) byFolder.set(c.folderId, []);
     byFolder.get(c.folderId)!.push(c);
@@ -93,6 +114,7 @@ export default function FoldersPage() {
 
   const flatFolders = flattenFolderList(folders);
   const loading = foldersLoading || credsLoading;
+  const refreshAll = () => { loadFolders(); refetchCredentials(); };
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -104,6 +126,28 @@ export default function FoldersPage() {
         <button onClick={() => setCreating(true)}
           className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
           <Plus className="w-4 h-4" /> New Folder
+        </button>
+      </div>
+
+      {/* Search + type filter */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, username, or tag…"
+            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            className="pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="">All Types</option>
+            {CREDENTIAL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
+          </select>
+        </div>
+        <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+        <button onClick={refreshAll} title="Refresh" className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+          <RefreshCw className="w-4 h-4 text-slate-500" />
         </button>
       </div>
 
@@ -132,6 +176,19 @@ export default function FoldersPage() {
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
+      ) : viewMode === 'grid' ? (
+        filteredCredentials.length === 0 ? (
+          <div className="text-center py-16 text-slate-400">
+            <p className="text-4xl mb-3">🔐</p>
+            <p className="font-medium">No credentials match your search.</p>
+          </div>
+        ) : (
+          <CredentialGridView credentials={filteredCredentials} decrypted={decrypted}
+            onOpen={id => navigate(`/credentials/${id}`)}
+            onDelete={handleDeleteCredential}
+            onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+          />
+        )
       ) : folders.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -142,7 +199,7 @@ export default function FoldersPage() {
         <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
           <FolderTree
             folders={folders} depth={0}
-            byFolder={byFolder} decrypted={decrypted}
+            byFolder={byFolder} decrypted={decrypted} activeFilter={activeFilter}
             expanded={expanded} toggleExpand={toggleExpand}
             editingId={editingId} editName={editName}
             setEditingId={setEditingId} setEditName={setEditName}
@@ -159,12 +216,13 @@ export default function FoldersPage() {
 }
 
 function FolderTree({
-  folders, depth, byFolder, decrypted, expanded, toggleExpand,
+  folders, depth, byFolder, decrypted, activeFilter, expanded, toggleExpand,
   editingId, editName, setEditingId, setEditName, onUpdate, onDelete,
   onAddCredential, onOpenCredential, onDeleteCredential, onTagClick,
 }: {
   folders: FolderItem[]; depth: number;
   byFolder: Map<string, CredentialListItem[]>; decrypted: Map<string, DecryptedCredentialMeta>;
+  activeFilter: boolean;
   expanded: Set<string>; toggleExpand: (id: string) => void;
   editingId: string | null; editName: string;
   setEditingId: (id: string | null) => void; setEditName: (name: string) => void;
@@ -176,7 +234,7 @@ function FolderTree({
     <>
       {folders.map(folder => {
         const members = byFolder.get(folder.id) ?? [];
-        const isOpen = expanded.has(folder.id);
+        const isOpen = expanded.has(folder.id) || (activeFilter && members.length > 0);
         const isEditing = editingId === folder.id;
         return (
           <div key={folder.id}>
@@ -248,7 +306,7 @@ function FolderTree({
               <div className="border-t border-slate-100">
                 <FolderTree
                   folders={folder.children} depth={depth + 1}
-                  byFolder={byFolder} decrypted={decrypted}
+                  byFolder={byFolder} decrypted={decrypted} activeFilter={activeFilter}
                   expanded={expanded} toggleExpand={toggleExpand}
                   editingId={editingId} editName={editName}
                   setEditingId={setEditingId} setEditName={setEditName}
