@@ -17,6 +17,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $appDir = Join-Path $OutputDir 'app'
 $templatesDir = Join-Path $PSScriptRoot 'portable-templates'
+$version = (Get-Content (Join-Path $root 'VERSION') -Raw).Trim()
 
 function Step([string]$msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function OK { Write-Host '    OK' -ForegroundColor Green }
@@ -30,6 +31,8 @@ function Invoke-Native {
     try { & $Command } finally { $ErrorActionPreference = $prev }
     if ($LASTEXITCODE -ne 0) { throw $FailMessage }
 }
+
+Write-Host "Building XCred Portable v$version" -ForegroundColor Cyan
 
 Step 'Checking tools'
 foreach ($cmd in 'node', 'npm', 'dotnet') {
@@ -86,11 +89,19 @@ Copy-Item (Join-Path $templatesDir 'Start-XCred.bat') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'Install-Service.ps1') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'Uninstall-Service.ps1') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'README.txt') $OutputDir -Force
+# Plain-text stamp so anyone can tell which release a folder is without starting it.
+Set-Content -Path (Join-Path $OutputDir 'VERSION.txt') -Value "XCred Portable $version`r`nBuilt $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Encoding ASCII
+OK
+
+Step "Creating versioned zip -> XCred-Portable-$version.zip"
+$zip = Join-Path (Split-Path $OutputDir) "XCred-Portable-$version.zip"
+if (Test-Path $zip) { Remove-Item $zip -Force }
+Compress-Archive -Path (Join-Path $OutputDir '*') -DestinationPath $zip -CompressionLevel Optimal
 OK
 
 Write-Host ''
 Write-Host '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' -ForegroundColor Green
 Write-Host " Portable build ready at: $OutputDir" -ForegroundColor Green
-Write-Host ' Zip that whole folder to distribute it, or' -ForegroundColor Green
+Write-Host " Ready-to-ship zip: $zip" -ForegroundColor Green
 Write-Host ' run Start-XCred.bat directly to try it now.' -ForegroundColor Green
 Write-Host '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' -ForegroundColor Green

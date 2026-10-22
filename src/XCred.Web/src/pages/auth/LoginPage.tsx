@@ -137,6 +137,10 @@ export default function LoginPage() {
             Don't have an account?{' '}
             <Link to="/register" className="text-indigo-600 hover:underline font-medium">Register</Link>
           </p>
+
+          <p data-testid="app-version" className="text-center text-xs text-slate-400 mt-4">
+            Version {__APP_VERSION__} &middot; Updated {__BUILD_DATE__}
+          </p>
         </div>
       </div>
     </div>
