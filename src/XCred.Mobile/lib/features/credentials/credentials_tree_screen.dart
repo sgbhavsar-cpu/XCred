@@ -18,6 +18,7 @@ import '../../core/vault/credential_type_meta.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
+import 'widgets/bulk_actions.dart';
 import 'widgets/bulk_assign_sheet.dart';
 import 'widgets/credential_row.dart';
 
@@ -230,6 +231,14 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
         selectedCount: _selectedIds.length,
         onClearSelection: () => setState(_selectedIds.clear),
         onSelectAll: () => _selectAllVisible(filtered),
+        onShare: () => showBulkShareSheet(
+          context,
+          credentialIds: _selectedIds.toList(),
+          onApplied: () => setState(_selectedIds.clear),
+        ),
+        onExportCsv: () => bulkExportSelected(context, ref, _selectedIds.toList()),
+        onDelete: () => bulkDeleteSelected(
+            context, ref, _selectedIds.toList(), () => setState(_selectedIds.clear)),
         onBulkEdit: () => showBulkAssignSheet(
           context,
           credentialIds: _selectedIds.toList(),

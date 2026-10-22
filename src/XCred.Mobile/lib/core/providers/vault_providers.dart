@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,8 @@ import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
 import '../vault/attachment_repository.dart';
 import '../vault/accounts.dart';
+import '../models/share_models.dart';
+import '../vault/bulk_edit.dart';
 import '../vault/credential_fields.dart';
 import '../vault/credential_search.dart';
 import '../vault/credential_group_repository.dart';
@@ -16,6 +19,7 @@ import '../vault/credential_type_meta.dart';
 import '../vault/folder_repository.dart';
 import '../vault/tag_repository.dart';
 import 'core_providers.dart';
+import 'share_providers.dart';
 import 'sync_providers.dart';
 
 final credentialRepositoryProvider = Provider<CredentialRepository>((ref) {
@@ -239,6 +243,119 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
         );
     await refresh();
     return result;
+  }
+
+  /// One bulk edit, any mix of: folder, credential group, expiry, tags, notes, custom fields —
+  /// mirrors the web app's `bulkEdit`. Notes/custom fields live inside the encrypted blob, so
+  /// each selected credential is decrypted, edited and re-encrypted here with its own existing
+  /// key (sharing/wrapping is untouched) and written back in chunked requests. Metadata goes
+  /// through the cheap server-side bulk endpoints.
+  Future<int> bulkEdit({
+    required List<String> credentialIds,
+    required BulkEditChanges changes,
+  }) async {
+    final session = ref.read(authSessionProvider);
+    final repo = ref.read(credentialRepositoryProvider);
+    final selected = [
+      for (final c in state.value?.credentials ?? const <CredentialListItem>[])
+        if (credentialIds.contains(c.id)) c
+    ];
+
+    if (changes.hasDataChange) {
+      if (session == null) throw StateError('Vault is locked.');
+      final crypto = ref.read(cryptoServiceProvider);
+      final items = <Map<String, String>>[];
+      for (final c in selected) {
+        final key = crypto.decryptKeyWithPrivateKey(session.privateKey, c.encryptedCredentialKey);
+        final payload = jsonDecode(await crypto.decrypt(key, c.encryptedData, c.dataIv))
+            as Map<String, dynamic>;
+        final edited = applyDataChanges(payload, changes);
+        final enc = await crypto.encrypt(key, jsonEncode(edited));
+        items.add({'id': c.id, 'encryptedData': enc.ciphertextB64, 'dataIv': enc.ivB64});
+      }
+      for (var i = 0; i < items.length; i += 50) {
+        await repo.bulkUpdateData(items.sublist(i, i + 50 > items.length ? items.length : i + 50));
+      }
+    }
+
+    final expiry = changes.expiry;
+    final plainExpiry = expiry != null && expiry.mode != ExpiryMode.extend;
+    if (changes.updateFolder || changes.updateGroup || plainExpiry) {
+      await repo.bulkAssign(
+        credentialIds: credentialIds,
+        updateFolder: changes.updateFolder,
+        folderId: changes.folderId,
+        updateCredentialGroup: changes.updateGroup,
+        credentialGroupId: changes.groupId,
+        updateExpiry: plainExpiry,
+        expiryDate: plainExpiry && expiry.mode == ExpiryMode.set ? expiry.date : null,
+      );
+    }
+    if (expiry != null && expiry.mode == ExpiryMode.extend) {
+      // "Extend" is relative to each credential's own expiry, so group by the resulting date.
+      final byDate = <String, List<String>>{};
+      for (final c in selected) {
+        (byDate[nextExpiry(c.expiryDate, expiry)!] ??= []).add(c.id);
+      }
+      for (final e in byDate.entries) {
+        await repo.bulkAssign(credentialIds: e.value, updateExpiry: true, expiryDate: e.key);
+      }
+    }
+    if (changes.hasTagChange) {
+      await repo.bulkTags(
+        credentialIds: credentialIds,
+        addTagIds: changes.addTagIds,
+        removeTagIds: changes.removeTagIds,
+      );
+    }
+
+    await refresh();
+    return selected.length;
+  }
+
+  /// Soft-deletes many credentials in one request.
+  Future<BulkResult> bulkDelete(List<String> credentialIds) async {
+    final result = await ref.read(credentialRepositoryProvider).bulkDelete(credentialIds);
+    await refresh();
+    return result;
+  }
+
+  /// Shares every selected credential with one user: for each, unwrap its key with our
+  /// private key, re-wrap it with the recipient's public key (the server never sees a
+  /// plaintext key) and call the same per-credential share endpoint the detail screen uses.
+  /// Failures are counted, not thrown, so one odd credential doesn't abort the rest.
+  Future<({int shared, int failed})> bulkShare({
+    required List<String> credentialIds,
+    required UserSummary recipient,
+    DateTime? expiresAt,
+    bool untilChanged = false,
+  }) async {
+    final session = ref.read(authSessionProvider);
+    if (session == null) throw StateError('Vault is locked.');
+    final crypto = ref.read(cryptoServiceProvider);
+    final shares = ref.read(sharesRepositoryProvider);
+    var shared = 0;
+    var failed = 0;
+    for (final c in state.value?.credentials ?? const <CredentialListItem>[]) {
+      if (!credentialIds.contains(c.id)) continue;
+      try {
+        final key = crypto.decryptKeyWithPrivateKey(session.privateKey, c.encryptedCredentialKey);
+        final wrapped = await crypto.encryptKeyWithPublicKey(recipient.publicKey, key);
+        await shares.create(
+          credentialId: c.id,
+          sharedWithUserId: recipient.id,
+          encryptedData: c.encryptedData,
+          dataIv: c.dataIv,
+          encryptedCredentialKey: wrapped,
+          expiresAt: expiresAt,
+          untilChanged: untilChanged,
+        );
+        shared++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    return (shared: shared, failed: failed);
   }
 
   Future<VaultState> _load() async {

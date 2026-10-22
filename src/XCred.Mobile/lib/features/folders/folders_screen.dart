@@ -15,6 +15,7 @@ import '../../core/vault/credential_search.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
+import '../credentials/widgets/bulk_actions.dart';
 import '../credentials/widgets/bulk_assign_sheet.dart';
 import '../credentials/widgets/credential_row.dart';
 
@@ -258,6 +259,14 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
         selectedCount: _selectedIds.length,
         onClearSelection: () => setState(_selectedIds.clear),
         onSelectAll: () => _selectAllVisible(visibleCredentials),
+        onShare: () => showBulkShareSheet(
+          context,
+          credentialIds: _selectedIds.toList(),
+          onApplied: () => setState(_selectedIds.clear),
+        ),
+        onExportCsv: () => bulkExportSelected(context, ref, _selectedIds.toList()),
+        onDelete: () => bulkDeleteSelected(
+            context, ref, _selectedIds.toList(), () => setState(_selectedIds.clear)),
         onBulkEdit: () => showBulkAssignSheet(
           context,
           credentialIds: _selectedIds.toList(),

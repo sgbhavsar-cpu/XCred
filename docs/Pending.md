@@ -50,4 +50,4 @@ Test account: username xcred_admin, login password LoginPassword#2026, master pa
 To reinstall/run the current app build once the emulator is up: flutter run -d emulator-5554 from src/XCred.Mobile (with flutter's bin on your PATH), or flutter test integration_test/<name>_test.dart -d emulator-5554 to run any of the integration tests we built
 
 
-21. Mobile parity for the bulk actions added on web (tags add/remove, expiry, notes, custom fields, delete, export selected, share). Web + API done; mobile still has the folder/group-only bulk sheet.
+21. ~~Mobile parity for the bulk actions~~ Done: Bulk Edit sheet (folder, group, tags, expiry, notes, custom fields) plus Share / Export CSV / Delete in the selection overflow menu. Unit + widget tests pass; not yet exercised on an emulator/device.
