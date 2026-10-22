@@ -21,7 +21,7 @@ test.describe('Search + Select All on Credentials/Folders/Tags, and bulk tag edi
     await createSecureNote(page, matchName, `${seed}a`);
     await createSecureNote(page, otherName, `${seed}b`);
 
-    await page.locator('input[placeholder*="Search"]').fill(`SelectAllMatch ${seed}`);
+    await page.locator('input[placeholder*="Search"]').fill('SelectAllMatch');
     await expect(page.getByTestId('credential-row').filter({ hasText: matchName })).toBeVisible();
     await expect(page.getByTestId('credential-row').filter({ hasText: otherName })).not.toBeVisible();
 
@@ -60,7 +60,7 @@ test.describe('Search + Select All on Credentials/Folders/Tags, and bulk tag edi
     // Search should be present on this page (the actual check the user asked for).
     await expect(page.locator('input[placeholder*="Search"]')).toBeVisible();
 
-    await page.locator('input[placeholder*="Search"]').fill(`SearchInFolder ${seed}`);
+    await page.locator('input[placeholder*="Search"]').fill('SearchInFolder');
     // Unassigned credential shouldn't match; nothing filtered in should reference it.
     await expect(page.getByTestId('credential-row').filter({ hasText: unassignedName })).not.toBeVisible();
 
@@ -78,7 +78,7 @@ test.describe('Search + Select All on Credentials/Folders/Tags, and bulk tag edi
     await page.getByRole('link', { name: 'Folders', exact: true }).click();
     await expect(page.getByTestId('credential-row').filter({ hasText: credA })).toBeVisible();
 
-    await page.locator('input[placeholder*="Search"]').fill(`FolderSelA ${seed}`);
+    await page.locator('input[placeholder*="Search"]').fill('FolderSelA');
     await page.getByRole('button', { name: 'Select All' }).click();
     await expect(page.getByText('1 selected')).toBeVisible();
   });
@@ -112,7 +112,7 @@ test.describe('Search + Select All on Credentials/Folders/Tags, and bulk tag edi
     await expect(page.getByText('2 selected')).toBeVisible();
 
     await page.getByRole('button', { name: 'Bulk Edit' }).click();
-    await expect(page.getByText('Bulk edit tags on 2 credentials')).toBeVisible();
+    await expect(page.getByText('Bulk edit 2 credentials')).toBeVisible();
     // First click = add.
     await page.getByTestId('bulk-tag-edit-modal').getByRole('button', { name: tagName }).click();
     await page.getByRole('button', { name: 'Apply' }).click();

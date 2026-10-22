@@ -12,10 +12,9 @@ import { useViewMode } from '@/hooks/useViewMode';
 import CredentialRow from '@/components/CredentialRow';
 import CredentialGridView from '@/components/CredentialGridView';
 import ViewModeToggle from '@/components/ViewModeToggle';
-import SelectionToolbar from '@/components/SelectionToolbar';
+import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
-import BulkEditModal from '@/components/BulkEditModal';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel, isExpired } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -33,7 +32,7 @@ const ICON_OPTIONS = ['🏦', '📧', '🌐', '📱', '🏢', '🚗', '🏥', '�
 export default function CredentialsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, copyPassword, duplicateCredential } = useDecryptedCredentials();
+  const { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
   const { viewMode, setViewMode } = useViewMode();
 
   // URL-driven context filters (linked from Folders/Tags pages)
@@ -49,7 +48,6 @@ export default function CredentialsPage() {
   const [expiredFilter, setExpiredFilter] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -175,17 +173,6 @@ export default function CredentialsPage() {
       toast.success(groupId ? 'Moved to credential group.' : 'Removed from credential group.');
     } catch { toast.error('Failed to move credential.'); }
   });
-
-  const applyBulkEdit = async (changes: Parameters<typeof bulkAssign>[1]) => {
-    try {
-      const result = await bulkAssign(Array.from(selectedIds), changes);
-      toast.success(`Updated ${result.updated} credential${result.updated !== 1 ? 's' : ''}.`);
-      clearSelection();
-      setShowBulkEdit(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
-    }
-  };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -353,7 +340,8 @@ export default function CredentialsPage() {
         </button>
       </div>
 
-      <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+      <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
 
       {/* Grid view: flat spreadsheet of every credential matching the current search/type filter.
           Otherwise, tree: credential groups (expandable) + ungrouped credentials. */}
@@ -491,10 +479,6 @@ export default function CredentialsPage() {
         </DndContext>
       )}
 
-      {showBulkEdit && (
-        <BulkEditModal count={selectedIds.size} folders={folders} groups={groups}
-          onApply={applyBulkEdit} onClose={() => setShowBulkEdit(false)} />
-      )}
     </div>
   );
 }

@@ -6,6 +6,9 @@ import { decryptCredentialData, encryptCredentialData, CREDENTIAL_FIELDS } from 
 import type { CredentialPayload } from '@/lib/vault';
 import { credentialTypeLabel } from '@/lib/utils';
 import { hasAccountsField, readAccounts } from '@/lib/accounts';
+import { decrypt, encrypt, decryptKeyWithPrivateKey, encryptKeyWithPublicKey } from '@/lib/crypto';
+import { applyDataChanges, hasDataChange, hasTagChange, nextExpiry } from '@/lib/bulk';
+import type { BulkEditChanges } from '@/lib/bulk';
 
 export interface CredentialListItem {
   id: string;
@@ -160,5 +163,99 @@ export function useDecryptedCredentials() {
     return res.data.data.id as string;
   };
 
-  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkTags, copyPassword, duplicateCredential };
+  /** One bulk edit, any mix of: folder, credential group, expiry, tags, notes, custom fields.
+   *  Notes/custom fields live inside the encrypted blob, so each selected credential is decrypted,
+   *  edited and re-encrypted here in the browser (with its own existing key — sharing/wrapping is
+   *  untouched) and then written back in one request. Metadata (folder/group/expiry/tags) goes
+   *  through the cheap server-side bulk endpoints. Returns how many credentials were processed. */
+  const bulkEdit = async (ids: string[], changes: BulkEditChanges) => {
+    const selected = credentials.filter(c => ids.includes(c.id));
+    let dataUpdated = 0;
+
+    if (hasDataChange(changes)) {
+      if (!privateKey) throw new Error('Vault is locked.');
+      const items: Array<{ id: string; encryptedData: string; dataIv: string }> = [];
+      for (const c of selected) {
+        const credentialKey = await decryptKeyWithPrivateKey(privateKey, c.encryptedCredentialKey);
+        const payload = JSON.parse(await decrypt(credentialKey, c.encryptedData, c.dataIv)) as Record<string, unknown>;
+        const edited = applyDataChanges(payload, changes);
+        const { ciphertext, iv } = await encrypt(credentialKey, JSON.stringify(edited));
+        items.push({ id: c.id, encryptedData: ciphertext, dataIv: iv });
+      }
+      // Chunked so a large selection never exceeds the request-size limit.
+      for (let i = 0; i < items.length; i += 50) {
+        const res = await api.patch('/credentials/bulk-update-data', { items: items.slice(i, i + 50) });
+        dataUpdated += (res.data.data as { updated: number }).updated;
+      }
+    }
+
+    const folderOrGroup = changes.folder || changes.group;
+    const expiry = changes.expiry;
+    if (folderOrGroup || (expiry && expiry.mode !== 'extend')) {
+      await api.patch('/credentials/bulk-assign', {
+        credentialIds: ids,
+        updateFolder: !!changes.folder, folderId: changes.folder?.id ?? null,
+        updateCredentialGroup: !!changes.group, credentialGroupId: changes.group?.id ?? null,
+        updateExpiry: !!expiry && expiry.mode !== 'extend',
+        expiryDate: expiry && expiry.mode === 'set' ? expiry.date : null,
+      });
+    }
+    if (expiry?.mode === 'extend') {
+      // "Extend" is relative to each credential's own expiry, so group by the resulting date.
+      const byDate = new Map<string, string[]>();
+      for (const c of selected) {
+        const d = nextExpiry(c.expiryDate, expiry)!;
+        byDate.set(d, [...(byDate.get(d) ?? []), c.id]);
+      }
+      for (const [date, group] of byDate) {
+        await api.patch('/credentials/bulk-assign', { credentialIds: group, updateExpiry: true, expiryDate: date });
+      }
+    }
+    if (hasTagChange(changes)) {
+      await api.patch('/credentials/bulk-tags', {
+        credentialIds: ids, addTagIds: changes.addTagIds ?? [], removeTagIds: changes.removeTagIds ?? [],
+      });
+    }
+
+    await refetch();
+    return { updated: selected.length, dataUpdated };
+  };
+
+  /** Soft-deletes many credentials in one request. */
+  const bulkDelete = async (ids: string[]) => {
+    const res = await api.post('/credentials/bulk-delete', { credentialIds: ids });
+    await refetch();
+    return res.data.data as { updated: number; skipped: number };
+  };
+
+  /** Shares every selected credential with one user: for each, unwrap its key with our private key,
+   *  re-wrap it with the recipient's public key (the server never sees a plaintext key), then call
+   *  the same per-credential share endpoint the detail page uses. Failures are counted, not thrown,
+   *  so one already-revoked/odd credential doesn't abort the rest. */
+  const bulkShare = async (
+    ids: string[],
+    recipient: { id: string; publicKey: string },
+    opts: { expiresAt: string | null; untilChanged: boolean },
+  ) => {
+    if (!privateKey) throw new Error('Vault is locked.');
+    let shared = 0;
+    const failed: string[] = [];
+    for (const c of credentials.filter(x => ids.includes(x.id))) {
+      try {
+        const credentialKey = await decryptKeyWithPrivateKey(privateKey, c.encryptedCredentialKey);
+        const encryptedCredentialKey = await encryptKeyWithPublicKey(recipient.publicKey, credentialKey);
+        await api.post(`/shares/credential/${c.id}`, {
+          sharedWithUserId: recipient.id,
+          encryptedData: c.encryptedData, dataIv: c.dataIv, encryptedCredentialKey,
+          expiresAt: opts.expiresAt, untilChanged: opts.untilChanged,
+        });
+        shared++;
+      } catch {
+        failed.push(c.id);
+      }
+    }
+    return { shared, failed };
+  };
+
+  return { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkTags, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential };
 }

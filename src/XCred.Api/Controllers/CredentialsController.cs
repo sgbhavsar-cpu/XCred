@@ -154,7 +154,7 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         if (req.CredentialIds.Count == 0)
             return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CREDENTIALS", "No credentials selected."));
 
-        if (!req.UpdateFolder && !req.UpdateCredentialGroup)
+        if (!req.UpdateFolder && !req.UpdateCredentialGroup && !req.UpdateExpiry)
             return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CHANGE", "Nothing to update."));
 
         if (req.UpdateFolder && !await IsFolderAccessibleAsync(req.FolderId, userId))
@@ -171,18 +171,19 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         {
             if (req.UpdateFolder) cred.FolderId = req.FolderId;
             if (req.UpdateCredentialGroup) cred.CredentialGroupId = req.CredentialGroupId;
+            if (req.UpdateExpiry) cred.ExpiryDate = req.ExpiryDate;
             cred.UpdatedAt = DateTime.UtcNow;
             cred.UpdatedById = userId;
         }
 
         await db.SaveChangesAsync();
 
-        var what = (req.UpdateFolder, req.UpdateCredentialGroup) switch
+        var what = string.Join(" and ", new[]
         {
-            (true, true) => "folder and credential group",
-            (true, false) => "folder",
-            _ => "credential group"
-        };
+            req.UpdateFolder ? "folder" : null,
+            req.UpdateCredentialGroup ? "credential group" : null,
+            req.UpdateExpiry ? "expiry date" : null,
+        }.Where(x => x != null));
         await audit.LogAsync(userId, AuditActions.CredentialsBulkAssigned, "Credential", null,
             $"Reassigned {what} for {creds.Count} credential(s)", GetIp());
 
@@ -250,6 +251,85 @@ public class CredentialsController(AppDbContext db, IAuditService audit) : Contr
         {
             Updated = creds.Count,
             Skipped = req.CredentialIds.Count - creds.Count
+        }));
+    }
+
+    // Rewrites the encrypted payload of many credentials (bulk notes / custom-field edits). Unlike
+    // BulkAssign this DOES change the secret blob, so — exactly like Update() — it revokes
+    // "until changed" shares. The per-credential key is untouched (see BulkUpdateDataRequest).
+    [HttpPatch("bulk-update-data")]
+    public async Task<ActionResult<ApiResponse<BulkAssignResultDto>>> BulkUpdateData([FromBody] BulkUpdateDataRequest req)
+    {
+        var userId = GetUserId();
+
+        if (req.Items.Count == 0)
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CREDENTIALS", "No credentials selected."));
+        if (req.Items.Any(i => string.IsNullOrWhiteSpace(i.EncryptedData) || string.IsNullOrWhiteSpace(i.DataIv)))
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("INVALID_DATA", "Encrypted data and IV are required."));
+
+        var ids = req.Items.Select(i => i.Id).ToList();
+        var creds = await db.Credentials
+            .Where(c => ids.Contains(c.Id) && c.OwnerId == userId)
+            .ToListAsync();
+        var byId = req.Items.GroupBy(i => i.Id).ToDictionary(g => g.Key, g => g.Last());
+
+        foreach (var cred in creds)
+        {
+            var item = byId[cred.Id];
+            cred.EncryptedData = item.EncryptedData;
+            cred.DataIv = item.DataIv;
+            cred.UpdatedAt = DateTime.UtcNow;
+            cred.UpdatedById = userId;
+        }
+
+        var credIds = creds.Select(c => c.Id).ToList();
+        var untilChangedShares = await db.SharedCredentials
+            .Where(s => credIds.Contains(s.CredentialId) && s.UntilChanged && !s.IsRevoked)
+            .ToListAsync();
+        foreach (var share in untilChangedShares)
+        {
+            share.IsRevoked = true;
+            share.RevokedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        await audit.LogAsync(userId, AuditActions.CredentialsBulkUpdated, "Credential", null,
+            $"Bulk edited notes/custom fields for {creds.Count} credential(s)", GetIp());
+
+        return Ok(ApiResponse<BulkAssignResultDto>.Ok(new BulkAssignResultDto
+        {
+            Updated = creds.Count,
+            Skipped = byId.Count - creds.Count
+        }));
+    }
+
+    // Soft-deletes many credentials in one call (same semantics as Delete()).
+    [HttpPost("bulk-delete")]
+    public async Task<ActionResult<ApiResponse<BulkAssignResultDto>>> BulkDelete([FromBody] BulkDeleteRequest req)
+    {
+        var userId = GetUserId();
+
+        if (req.CredentialIds.Count == 0)
+            return BadRequest(ApiResponse<BulkAssignResultDto>.Fail("NO_CREDENTIALS", "No credentials selected."));
+
+        var creds = await db.Credentials
+            .Where(c => req.CredentialIds.Contains(c.Id) && c.OwnerId == userId)
+            .ToListAsync();
+
+        foreach (var cred in creds)
+        {
+            cred.IsDeleted = true;
+            cred.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        await audit.LogAsync(userId, AuditActions.CredentialsBulkDeleted, "Credential", null,
+            $"Deleted {creds.Count} credential(s)", GetIp());
+
+        return Ok(ApiResponse<BulkAssignResultDto>.Ok(new BulkAssignResultDto
+        {
+            Updated = creds.Count,
+            Skipped = req.CredentialIds.Distinct().Count() - creds.Count
         }));
     }
 

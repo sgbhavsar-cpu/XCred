@@ -18,6 +18,8 @@ public static class AuditActions
     public const string CredentialUpdated = "CredentialUpdated";
     public const string CredentialDeleted = "CredentialDeleted";
     public const string CredentialsBulkAssigned = "CredentialsBulkAssigned";
+    public const string CredentialsBulkUpdated = "CredentialsBulkUpdated";
+    public const string CredentialsBulkDeleted = "CredentialsBulkDeleted";
 
     public const string AttachmentUploaded = "AttachmentUploaded";
     public const string AttachmentDownloaded = "AttachmentDownloaded";
