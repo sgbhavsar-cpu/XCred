@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { cn, isExpired } from '@/lib/utils';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
+import { useCredentialSearch } from '@/lib/search';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import CredentialRow from '@/components/CredentialRow';
 import SelectionToolbar from '@/components/SelectionToolbar';
@@ -125,16 +126,17 @@ export default function TagsPage() {
     }
   };
 
+  const { active: searching, scores } = useCredentialSearch(credentials, decrypted, search);
+
   const matchesSearch = (c: (typeof credentials)[number]) => {
     if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
     if (expiredFilter && !isExpired(c.expiryDate)) return false;
-    if (!search) return true;
-    const d = decrypted.get(c.id);
-    const q = search.toLowerCase();
-    return (d?.name ?? '').toLowerCase().includes(q) || (d?.username ?? '').toLowerCase().includes(q);
+    if (!searching) return true;
+    return scores.has(c.id);
   };
   const activeFilter = !!search || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+  if (searching) visibleCredentials.sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0));
 
   const handleExportCsv = () => {
     downloadCsv(`xcred-tags-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
@@ -208,7 +210,7 @@ export default function TagsPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or username…"
+            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}

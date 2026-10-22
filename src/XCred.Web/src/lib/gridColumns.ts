@@ -29,7 +29,9 @@ export const CREDENTIAL_GRID_COLUMNS: Record<string, GridColumnMap> = {
   MobileBankingPin: { addressKey: 'mobileNumber', secondaryKey: 'bankOrAppName', primarySecretKey: 'loginPin', secondarySecretKey: 'transactionPin' },
   NetworkDevice: { addressKey: 'ipAddresses', secondaryKey: 'username', primarySecretKey: 'password' },
   Rdp: { addressKey: 'host', secondaryKey: 'username', primarySecretKey: 'password' },
-  WindowsServer: { addressKey: 'serverOrDomainName', secondaryKey: 'username', primarySecretKey: 'password' },
+  // username/password here are virtual keys: useDecryptedCredentials fills them from the first account row.
+  WindowsServer: { addressKey: 'ipAddresses', secondaryKey: 'username', primarySecretKey: 'password' },
+  LinuxServer: { addressKey: 'ipAddresses', secondaryKey: 'username', primarySecretKey: 'password' },
   EmailAccount: { addressKey: 'emailAddress', primarySecretKey: 'password' },
   IdentityDocument: { addressKey: 'documentType', secondaryKey: 'fullName', primarySecretKey: 'documentNumber' },
   InsurancePolicy: { addressKey: 'provider', primarySecretKey: 'policyNumber' },

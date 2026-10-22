@@ -8,7 +8,9 @@ import { encryptCredentialData, decryptCredentialData, CREDENTIAL_FIELDS, CREDEN
 import type { FieldDef } from '@/lib/vault';
 import { credentialTypeLabel, credentialTypeIcon, isValidUrl } from '@/lib/utils';
 import { passwordStrength } from '@/lib/crypto';
-import { computeFieldLink, openSmartLink, linkTooltip, networkDeviceLink } from '@/lib/links';
+import { computeFieldLink, openSmartLink, linkTooltip, listItemLinkResolver } from '@/lib/links';
+import { ACCOUNTS_KEY, defaultAccounts, isValidIPv4, parseAccounts, readAccounts } from '@/lib/accounts';
+import type { Account } from '@/lib/accounts';
 import PasswordGeneratorModal from './components/PasswordGeneratorModal';
 import { cn } from '@/lib/utils';
 
@@ -75,7 +77,11 @@ export default function CredentialFormPage() {
         setCustomFields(decrypted.customFields ? JSON.parse(decrypted.customFields as string) : []);
         const typeFields = CREDENTIAL_FIELDS[cred.type] ?? [];
         const fieldData: Record<string, string> = {};
-        typeFields.forEach(f => { fieldData[f.key] = (decrypted[f.key] as string) ?? (f.type === 'list' ? '[]' : ''); });
+        typeFields.forEach(f => {
+          fieldData[f.key] = f.type === 'accounts'
+            ? JSON.stringify(readAccounts(decrypted))
+            : (decrypted[f.key] as string) ?? (f.type === 'list' ? '[]' : '');
+        });
         setFields(fieldData);
       } catch {
         toast.error('Failed to load credential for editing.');
@@ -91,7 +97,10 @@ export default function CredentialFormPage() {
   useEffect(() => {
     if (isEdit) return;
     const defaults: Record<string, string> = {};
-    (CREDENTIAL_FIELDS[type] ?? []).forEach(f => { if (f.type === 'list') defaults[f.key] = '[]'; });
+    (CREDENTIAL_FIELDS[type] ?? []).forEach(f => {
+      if (f.type === 'list') defaults[f.key] = '[]';
+      if (f.type === 'accounts') defaults[f.key] = JSON.stringify(defaultAccounts(type));
+    });
     setFields(defaults);
   }, [type, isEdit]);
 
@@ -393,10 +402,11 @@ function FormField({ field, value, allValues, onChange, hidden, onToggleHidden, 
           className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-mono" />
       ) : field.type === 'list' ? (
         <ListField value={value} onChange={onChange} placeholder={field.placeholder}
-          linkResolver={field.linkType === 'network-device-ip'
-            ? (ip: string) => networkDeviceLink(allValues.protocol, ip, allValues.port)
-            : undefined}
+          linkResolver={listItemLinkResolver(field, allValues)}
+          validate={field.validate}
         />
+      ) : field.type === 'accounts' ? (
+        <AccountsField value={value} onChange={onChange} />
       ) : (
         <div className="relative">
           <input name={field.key} value={value} onChange={e => onChange(e.target.value)}
@@ -441,9 +451,10 @@ function FormField({ field, value, allValues, onChange, hidden, onToggleHidden, 
   );
 }
 
-function ListField({ value, onChange, placeholder, linkResolver }: {
+function ListField({ value, onChange, placeholder, linkResolver, validate }: {
   value: string; onChange: (v: string) => void; placeholder?: string;
   linkResolver?: (item: string) => string | null;
+  validate?: 'ipv4';
 }) {
   let items: string[] = [];
   try { items = JSON.parse(value || '[]'); } catch { items = []; }
@@ -454,8 +465,14 @@ function ListField({ value, onChange, placeholder, linkResolver }: {
     <div className="space-y-2">
       {items.map((item, i) => {
         const href = linkResolver?.(item);
+        const trimmed = item.trim();
+        const warning = validate === 'ipv4' && trimmed
+          ? (!isValidIPv4(trimmed) ? 'Not a valid IPv4 address (e.g. 192.168.1.10) — you can still save.'
+            : items.findIndex(v => v.trim() === trimmed) !== i ? 'Duplicate address.' : null)
+          : null;
         return (
-          <div key={i} className="flex gap-2">
+          <div key={i}>
+          <div className="flex gap-2">
             <div className="relative flex-1">
               <input value={item} placeholder={placeholder}
                 onChange={e => update(items.map((v, j) => j === i ? e.target.value : v))}
@@ -475,12 +492,60 @@ function ListField({ value, onChange, placeholder, linkResolver }: {
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
+          {warning && <p className="text-xs text-amber-600 mt-1">{warning}</p>}
+          </div>
         );
       })}
       <button type="button" onClick={() => update([...items, ''])}
         className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
         <Plus className="w-3.5 h-3.5" /> Add {items.length > 0 ? 'another' : 'value'}
       </button>
+    </div>
+  );
+}
+
+/** Repeating Label / Username / Password rows for server credentials (Windows Server, Linux Server). */
+function AccountsField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const accounts = parseAccounts(value);
+  const [shown, setShown] = useState<Record<number, boolean>>({});
+  const [generatorFor, setGeneratorFor] = useState<number | null>(null);
+  const update = (next: Account[]) => onChange(JSON.stringify(next));
+  const patch = (i: number, p: Partial<Account>) => update(accounts.map((a, j) => j === i ? { ...a, ...p } : a));
+  const input = 'w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+  return (
+    <div className="space-y-2" data-field={ACCOUNTS_KEY}>
+      {accounts.map((a, i) => (
+        <div key={i} className="flex gap-2 items-start" data-account-row>
+          <input value={a.label} onChange={e => patch(i, { label: e.target.value })} placeholder="Label (RDP, Root, SSH…)"
+            className={cn(input, 'w-1/4')} aria-label="Account label" />
+          <input value={a.username} onChange={e => patch(i, { username: e.target.value })} placeholder="Username"
+            className={cn(input, 'w-1/3')} aria-label="Account username" />
+          <div className="flex-1 relative">
+            <input value={a.password} type={shown[i] ? 'text' : 'password'} onChange={e => patch(i, { password: e.target.value })}
+              placeholder="Password" className={cn(input, 'pr-16 font-mono')} aria-label="Account password" />
+            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center">
+              <button type="button" onClick={() => setShown(prev => ({ ...prev, [i]: !prev[i] }))} className="p-1 text-slate-400 hover:text-slate-600">
+                {shown[i] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+              <button type="button" onClick={() => setGeneratorFor(i)} className="p-1 text-slate-400 hover:text-indigo-600" title="Generate password">
+                <Wand2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          <button type="button" onClick={() => update(accounts.filter((_, j) => j !== i))}
+            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors" title="Remove account">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={() => update([...accounts, { label: '', username: '', password: '' }])}
+        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium">
+        <Plus className="w-3.5 h-3.5" /> Add {accounts.length > 0 ? 'another user' : 'user'}
+      </button>
+      {generatorFor !== null && (
+        <PasswordGeneratorModal onSelect={pw => patch(generatorFor, { password: pw })} onClose={() => setGeneratorFor(null)} />
+      )}
     </div>
   );
 }

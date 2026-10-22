@@ -6,6 +6,7 @@ import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable
 import api from '@/api/client';
 import { cn, credentialTypeLabel, isExpired } from '@/lib/utils';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
+import { nameMatches, useCredentialSearch } from '@/lib/search';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
@@ -185,19 +186,32 @@ export default function FoldersPage() {
     }
   };
 
+  // Search: credential fields always; in the tree view a matching folder name also pulls in every
+  // credential in that folder and its subfolders (grid view is a flat credential table, so there
+  // only the credentials' own fields are searched).
+  const { active: searching, tokens, scores } = useCredentialSearch(credentials, decrypted, search);
+  const matchedFolderIds = new Set<string>();
+  if (searching && viewMode !== 'grid') {
+    const walk = (list: FolderItem[], inherited: boolean) => {
+      for (const f of list) {
+        const hit = inherited || nameMatches(f.name, tokens);
+        if (hit) matchedFolderIds.add(f.id);
+        walk(f.children, hit);
+      }
+    };
+    walk(folders, false);
+  }
+
   const matchesSearch = (c: CredentialListItem) => {
     if (filterType && c.type !== filterType) return false;
     if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
     if (expiredFilter && !isExpired(c.expiryDate)) return false;
-    if (!search) return true;
-    const d = decrypted.get(c.id);
-    const q = search.toLowerCase();
-    return (d?.name ?? '').toLowerCase().includes(q)
-      || (d?.username ?? '').toLowerCase().includes(q)
-      || c.tags.some(t => t.name.toLowerCase().includes(q));
+    if (!searching) return true;
+    return scores.has(c.id) || (!!c.folderId && matchedFolderIds.has(c.folderId));
   };
   const activeFilter = !!search || !!filterType || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+  if (searching) visibleCredentials.sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0));
 
   const handleExportCsv = () => {
     downloadCsv(`xcred-folders-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
@@ -240,7 +254,7 @@ export default function FoldersPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, username, or tag…"
+            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div className="relative">
@@ -284,7 +298,7 @@ export default function FoldersPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, username, or tag…"
+            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}

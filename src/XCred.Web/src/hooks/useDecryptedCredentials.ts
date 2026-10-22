@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/authStore';
 import { decryptCredentialData, encryptCredentialData, CREDENTIAL_FIELDS } from '@/lib/vault';
 import type { CredentialPayload } from '@/lib/vault';
 import { credentialTypeLabel } from '@/lib/utils';
+import { hasAccountsField, readAccounts } from '@/lib/accounts';
 
 export interface CredentialListItem {
   id: string;
@@ -51,7 +52,22 @@ export function useDecryptedCredentials() {
       await Promise.all(items.map(async item => {
         try {
           const fields = await decryptCredentialData(item.encryptedData, item.dataIv, item.encryptedCredentialKey, privateKey);
-          const passwordField = (CREDENTIAL_FIELDS[item.type] ?? []).find(f => f.type === 'password');
+          const defs = CREDENTIAL_FIELDS[item.type] ?? [];
+          if (hasAccountsField(defs)) {
+            // Server types keep many user/password rows; expose the first row that has a password
+            // (else the first row) as virtual username/password so the list, grid, CSV and
+            // "missing password" filter keep working off the same keys as every other type.
+            const rows = readAccounts(fields);
+            const primary = rows.find(a => a.password) ?? rows[0];
+            map.set(item.id, {
+              name: (fields.name as string) ?? credentialTypeLabel(item.type),
+              username: primary?.username || undefined,
+              hasPassword: rows.some(a => a.password.trim()),
+              fields: { ...(fields as Record<string, string>), username: primary?.username ?? '', password: primary?.password ?? '' },
+            });
+            return;
+          }
+          const passwordField = defs.find(f => f.type === 'password');
           map.set(item.id, {
             name: (fields.name as string) ?? credentialTypeLabel(item.type),
             username: (fields.username ?? fields.email ?? fields.cardholderName ?? fields.ssid) as string | undefined,
@@ -110,13 +126,15 @@ export function useDecryptedCredentials() {
   const copyPassword = async (id: string): Promise<boolean> => {
     const item = credentials.find(c => c.id === id);
     if (!item || !privateKey) return false;
-    const passwordField = (CREDENTIAL_FIELDS[item.type] ?? []).find(f => f.type === 'password');
-    if (!passwordField) return false;
+    const defs = CREDENTIAL_FIELDS[item.type] ?? [];
     const data = await decryptCredentialData(item.encryptedData, item.dataIv, item.encryptedCredentialKey, privateKey);
-    const value = data[passwordField.key];
+    const passwordField = defs.find(f => f.type === 'password');
+    const accountsPassword = hasAccountsField(defs) ? readAccounts(data).find(a => a.password)?.password : undefined;
+    if (!passwordField && !hasAccountsField(defs)) return false;
+    const value = accountsPassword ?? (passwordField ? data[passwordField.key] : undefined);
     if (!value) return false;
     await navigator.clipboard.writeText(value);
-    api.post(`/credentials/${id}/copy`, null, { params: { field: passwordField.key } }).catch(() => {});
+    api.post(`/credentials/${id}/copy`, null, { params: { field: passwordField?.key ?? 'accounts' } }).catch(() => {});
     return true;
   };
 
