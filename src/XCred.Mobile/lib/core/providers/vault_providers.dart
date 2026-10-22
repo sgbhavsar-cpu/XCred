@@ -7,7 +7,9 @@ import '../api/api_client.dart';
 import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
 import '../vault/attachment_repository.dart';
+import '../vault/accounts.dart';
 import '../vault/credential_fields.dart';
+import '../vault/credential_search.dart';
 import '../vault/credential_group_repository.dart';
 import '../vault/credential_repository.dart';
 import '../vault/credential_type_meta.dart';
@@ -118,10 +120,12 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
     if (session == null || item == null) return false;
 
     FieldDef? passwordField;
+    var hasAccounts = false;
     for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
-      if (f.type == 'password') { passwordField = f; break; }
+      if (f.type == 'password' && passwordField == null) passwordField = f;
+      if (f.type == 'accounts') hasAccounts = true;
     }
-    if (passwordField == null) return false;
+    if (passwordField == null && !hasAccounts) return false;
 
     final crypto = ref.read(cryptoServiceProvider);
     final data = await crypto.decryptCredentialFields(
@@ -130,13 +134,20 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
       encryptedCredentialKey: item.encryptedCredentialKey,
       privateKey: session.privateKey,
     );
-    final value = data[passwordField.key] as String?;
+    String? value;
+    if (hasAccounts) {
+      for (final a in readAccounts(data)) {
+        if (a.password.isNotEmpty) { value = a.password; break; }
+      }
+    } else {
+      value = data[passwordField!.key] as String?;
+    }
     if (value == null || value.isEmpty) return false;
 
     await Clipboard.setData(ClipboardData(text: value));
     unawaited(ref
         .read(apiClientProvider)
-        .post<String>('/api/credentials/$id/copy?field=${passwordField.key}',
+        .post<String>('/api/credentials/$id/copy?field=${passwordField?.key ?? kAccountsKey}',
             identityFromData<String>, data: null)
         .catchError((_) => ''));
 
@@ -257,18 +268,39 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
             privateKey: session.privateKey,
           );
           final name = fields['name'] as String?;
-          final subtitle = (fields['username'] ?? fields['email'] ?? fields['emailAddress'] ??
+          String? subtitle = (fields['username'] ?? fields['email'] ?? fields['emailAddress'] ??
               fields['cardholderName'] ?? fields['ssid']) as String?;
           FieldDef? passwordField;
+          var hasAccounts = false;
           for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
-            if (f.type == 'password') { passwordField = f; break; }
+            if (f.type == 'password' && passwordField == null) passwordField = f;
+            if (f.type == 'accounts') hasAccounts = true;
           }
-          final hasPassword = passwordField == null ||
+          var hasPassword = passwordField == null ||
               ((fields[passwordField.key] as String?)?.trim().isNotEmpty ?? false);
+          if (hasAccounts) {
+            // Server types keep many user/password rows: show the first row that has a
+            // password (else the first row) and count the credential as "has a password"
+            // when any row does.
+            final rows = readAccounts(fields);
+            final primary = rows.firstWhere((a) => a.password.isNotEmpty,
+                orElse: () => rows.isNotEmpty ? rows.first : const Account());
+            subtitle = primary.username.isEmpty ? null : primary.username;
+            hasPassword = rows.any((a) => a.password.trim().isNotEmpty);
+          }
+          final displayName = (name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type);
+          final search = buildSearchEntry(
+            type: item.type,
+            name: displayName,
+            tagNames: item.tags.map((t) => t.name),
+            fields: fields,
+          );
           decrypted[item.id] = DecryptedCredentialMeta(
-            name: (name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type),
+            name: displayName,
             subtitle: subtitle,
             hasPassword: hasPassword,
+            searchText: search.hay,
+            searchName: search.name,
           );
         } catch (_) {
           // A single undecryptable credential (corrupt cache row, key mismatch after a

@@ -11,6 +11,7 @@ import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_csv.dart';
+import '../../core/vault/credential_search.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
@@ -43,15 +44,30 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
     super.dispose();
   }
 
+  List<String> _tokens = const [];
+  Set<String> _matchedFolderIds = const {};
+
+  /// Folders whose own name matches the search, plus everything nested under them — their
+  /// credentials all show, ahead of field-only matches.
+  void _collectMatchedFolders(List<FolderNode> nodes, bool inherited, Set<String> out) {
+    for (final f in nodes) {
+      final hit = inherited || searchNameMatches(f.name, _tokens);
+      if (hit) out.add(f.id);
+      _collectMatchedFolders(f.children, hit, out);
+    }
+  }
+
+  int _fieldScore(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
+    final meta = decrypted[c.id];
+    return meta == null ? 0 : scoreSearchText(meta.searchText, meta.searchName, _tokens);
+  }
+
   bool _matchesSearch(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
     if (_noPasswordFilter && (decrypted[c.id]?.hasPassword ?? true)) return false;
     if (_expiredFilter && !c.isExpired) return false;
-    if (_search.isEmpty) return true;
-    final q = _search.toLowerCase();
-    final meta = decrypted[c.id];
-    if ((meta?.name ?? '').toLowerCase().contains(q)) return true;
-    if ((meta?.subtitle ?? '').toLowerCase().contains(q)) return true;
-    return c.tags.any((t) => t.name.toLowerCase().contains(q));
+    if (_tokens.isEmpty) return true;
+    return _fieldScore(c, decrypted) > 0 ||
+        (c.folderId != null && _matchedFolderIds.contains(c.folderId));
   }
 
   Future<void> _exportCsv(List<CredentialListItem> items, Map<String, DecryptedCredentialMeta> decrypted) async {
@@ -214,10 +230,18 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
     final activeFilter = _search.isNotEmpty || _noPasswordFilter || _expiredFilter;
 
     final vault = vaultAsync.value;
+    _tokens = tokenizeQuery(_search);
+    final matchedFolders = <String>{};
+    if (_tokens.isNotEmpty) _collectMatchedFolders(foldersAsync.value ?? const [], false, matchedFolders);
+    _matchedFolderIds = matchedFolders;
     final byFolder = <String, List<CredentialListItem>>{};
     final unassigned = <CredentialListItem>[];
     if (vault != null) {
-      for (final c in vault.credentials) {
+      final ranked = vault.credentials.toList();
+      if (_tokens.isNotEmpty) {
+        ranked.sort((a, b) => _fieldScore(b, vault.decrypted).compareTo(_fieldScore(a, vault.decrypted)));
+      }
+      for (final c in ranked) {
         if (!_matchesSearch(c, vault.decrypted)) continue;
         if (c.folderId != null) {
           (byFolder[c.folderId!] ??= []).add(c);
@@ -259,7 +283,7 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
                     decoration: const InputDecoration(
                       isDense: true,
                       prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search by name, username, or tag…',
+                      hintText: 'Search name, IP, user, notes, tags… (any words)',
                     ),
                     onChanged: (v) => setState(() => _search = v),
                   ),

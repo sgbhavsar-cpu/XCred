@@ -144,7 +144,18 @@ class DecryptedCredentialMeta {
   // field is actually filled in; false only when the type has one and it's empty — the
   // "missing password" signal the Credentials/Folders/Tags toolbar filter looks for.
   final bool hasPassword;
-  const DecryptedCredentialMeta({required this.name, this.subtitle, this.hasPassword = true});
+  // Lowercased searchable text (never includes secrets) and lowercased name — see
+  // core/vault/credential_search.dart. Built once at decrypt time so each keystroke is
+  // just a substring pass over cached strings.
+  final String searchText;
+  final String searchName;
+  const DecryptedCredentialMeta({
+    required this.name,
+    this.subtitle,
+    this.hasPassword = true,
+    this.searchText = '',
+    this.searchName = '',
+  });
 }
 
 class CredentialGroupSummary {

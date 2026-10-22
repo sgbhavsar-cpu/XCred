@@ -7,12 +7,17 @@
 class FieldDef {
   final String key;
   final String label;
-  final String type; // text | password | textarea | select | url | list
+  final String type; // text | password | textarea | select | url | list | accounts
   final String? placeholder;
   final bool optional;
   final List<String>? options;
   final int? rows;
-  final String? linkType; // email | tel | ssh | rdp | network-device-ip
+  final String? linkType; // email | tel | ssh | rdp | network-device-ip | rdp-ip | ssh-ip
+  // Secret values that aren't password-typed (card numbers, private keys, recovery codes…):
+  // excluded from search exactly like password fields are.
+  final bool noSearch;
+  // 'ipv4' shows a non-blocking inline warning for list items that don't look like one.
+  final String? validate;
 
   const FieldDef({
     required this.key,
@@ -23,6 +28,8 @@ class FieldDef {
     this.options,
     this.rows,
     this.linkType,
+    this.noSearch = false,
+    this.validate,
   });
 }
 
@@ -31,7 +38,7 @@ const Map<String, List<FieldDef>> kCredentialFields = {
     FieldDef(key: 'url', label: 'URL', type: 'url', placeholder: 'https://example.com'),
     FieldDef(key: 'username', label: 'Username / Email', type: 'text'),
     FieldDef(key: 'password', label: 'Password', type: 'password'),
-    FieldDef(key: 'totp', label: 'TOTP Secret', type: 'text', optional: true),
+    FieldDef(key: 'totp', label: 'TOTP Secret', type: 'text', optional: true, noSearch: true),
     FieldDef(key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true, linkType: 'email'),
     FieldDef(key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true, linkType: 'tel'),
   ],
@@ -56,13 +63,13 @@ const Map<String, List<FieldDef>> kCredentialFields = {
   'SshKey': [
     FieldDef(key: 'host', label: 'Host / Server', type: 'text', optional: true, linkType: 'ssh'),
     FieldDef(key: 'username', label: 'Username', type: 'text', optional: true),
-    FieldDef(key: 'privateKey', label: 'Private Key', type: 'textarea', rows: 6),
+    FieldDef(key: 'privateKey', label: 'Private Key', type: 'textarea', rows: 6, noSearch: true),
     FieldDef(key: 'publicKey', label: 'Public Key', type: 'textarea', optional: true, rows: 3),
     FieldDef(key: 'passphrase', label: 'Passphrase', type: 'password', optional: true),
   ],
   'CreditCard': [
     FieldDef(key: 'cardholderName', label: 'Cardholder Name', type: 'text'),
-    FieldDef(key: 'cardNumber', label: 'Card Number', type: 'text'),
+    FieldDef(key: 'cardNumber', label: 'Card Number', type: 'text', noSearch: true),
     FieldDef(key: 'cardNetwork', label: 'Card Network', type: 'select', optional: true, options: [
       'Visa', 'Mastercard', 'RuPay', 'Amex', 'Other'
     ]),
@@ -90,13 +97,13 @@ const Map<String, List<FieldDef>> kCredentialFields = {
     FieldDef(key: 'vendor', label: 'Vendor', type: 'text', optional: true),
   ],
   'Certificate': [
-    FieldDef(key: 'certificate', label: 'Certificate (PEM)', type: 'textarea', rows: 6),
-    FieldDef(key: 'privateKey', label: 'Private Key (PEM)', type: 'textarea', optional: true, rows: 6),
+    FieldDef(key: 'certificate', label: 'Certificate (PEM)', type: 'textarea', rows: 6, noSearch: true),
+    FieldDef(key: 'privateKey', label: 'Private Key (PEM)', type: 'textarea', optional: true, rows: 6, noSearch: true),
     FieldDef(key: 'passphrase', label: 'Passphrase', type: 'password', optional: true),
     FieldDef(key: 'issuer', label: 'Issuer / CA', type: 'text', optional: true),
   ],
   'EnvironmentVariables': [
-    FieldDef(key: 'content', label: 'Environment Variables (.env format)', type: 'textarea', rows: 10),
+    FieldDef(key: 'content', label: 'Environment Variables (.env format)', type: 'textarea', rows: 10, noSearch: true),
   ],
   'BankAccount': [
     FieldDef(key: 'bankName', label: 'Bank Name', type: 'text'),
@@ -135,9 +142,13 @@ const Map<String, List<FieldDef>> kCredentialFields = {
   ],
   'WindowsServer': [
     FieldDef(key: 'serverOrDomainName', label: 'Server / Domain Name', type: 'text'),
-    FieldDef(key: 'username', label: 'Username', type: 'text'),
-    FieldDef(key: 'password', label: 'Password', type: 'password'),
-    FieldDef(key: 'notes', label: 'Notes', type: 'textarea', optional: true, rows: 4),
+    FieldDef(key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.10', linkType: 'rdp-ip', validate: 'ipv4'),
+    FieldDef(key: 'accounts', label: 'Users & Passwords', type: 'accounts'),
+  ],
+  'LinuxServer': [
+    FieldDef(key: 'hostname', label: 'Hostname', type: 'text'),
+    FieldDef(key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.20', linkType: 'ssh-ip', validate: 'ipv4'),
+    FieldDef(key: 'accounts', label: 'Users & Passwords', type: 'accounts'),
   ],
   'EmailAccount': [
     FieldDef(key: 'emailAddress', label: 'Email Address', type: 'text', linkType: 'email'),
@@ -167,7 +178,7 @@ const Map<String, List<FieldDef>> kCredentialFields = {
   ],
   'RecoveryCodes': [
     FieldDef(key: 'serviceName', label: 'Service Name', type: 'text'),
-    FieldDef(key: 'codes', label: 'Backup / Recovery Codes', type: 'textarea', rows: 8),
+    FieldDef(key: 'codes', label: 'Backup / Recovery Codes', type: 'textarea', rows: 8, noSearch: true),
   ],
   'Generic': [
     FieldDef(key: 'username', label: 'Username', type: 'text', optional: true),

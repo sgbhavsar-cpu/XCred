@@ -10,7 +10,9 @@ import '../../core/models/credential_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/sync_providers.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/models/folder_tag_models.dart';
 import '../../core/vault/credential_csv.dart';
+import '../../core/vault/credential_search.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/widgets/empty_state.dart';
@@ -55,19 +57,51 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     super.dispose();
   }
 
+  // Search: credential fields always; a matching credential-group or folder name also pulls
+  // in every credential inside it, ranked ahead of field-only matches.
+  List<String> _tokens = const [];
+  Set<String> _matchedGroupIds = const {};
+  Set<String> _matchedFolderIds = const {};
+
+  void _prepareSearch(List<CredentialGroupSummary> groups, List<FolderNode> folders) {
+    _tokens = tokenizeQuery(_search);
+    _matchedGroupIds = {
+      for (final g in groups)
+        if (searchNameMatches(g.name, _tokens)) g.id,
+    };
+    _matchedFolderIds = {
+      for (final f in flattenFolders(folders))
+        if (searchNameMatches(f.indentedName, _tokens)) f.id,
+    };
+  }
+
+  bool _containerMatch(CredentialListItem c) =>
+      (c.credentialGroupId != null && _matchedGroupIds.contains(c.credentialGroupId)) ||
+      (c.folderId != null && _matchedFolderIds.contains(c.folderId));
+
+  int _fieldScore(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
+    final meta = decrypted[c.id];
+    return meta == null ? 0 : scoreSearchText(meta.searchText, meta.searchName, _tokens);
+  }
+
+  int _rank(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) =>
+      (_containerMatch(c) ? 100000 : 0) + _fieldScore(c, decrypted);
+
   bool _matches(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
     if (_typeFilter != null && c.type != _typeFilter) return false;
     if (_noPasswordFilter && (decrypted[c.id]?.hasPassword ?? true)) return false;
     if (_expiredFilter && !c.isExpired) return false;
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
-      final meta = decrypted[c.id];
-      final nameMatch = (meta?.name ?? '').toLowerCase().contains(q);
-      final subtitleMatch = (meta?.subtitle ?? '').toLowerCase().contains(q);
-      final tagMatch = c.tags.any((t) => t.name.toLowerCase().contains(q));
-      if (!nameMatch && !subtitleMatch && !tagMatch) return false;
-    }
+    if (_tokens.isNotEmpty && _fieldScore(c, decrypted) == 0 && !_containerMatch(c)) return false;
     return true;
+  }
+
+  List<CredentialListItem> _filterAndRank(
+      List<CredentialListItem> all, Map<String, DecryptedCredentialMeta> decrypted) {
+    final out = all.where((c) => _matches(c, decrypted)).toList();
+    if (_tokens.isNotEmpty) {
+      out.sort((a, b) => _rank(b, decrypted).compareTo(_rank(a, decrypted)));
+    }
+    return out;
   }
 
   Future<void> _refresh() async {
@@ -178,9 +212,10 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     final groupsAsync = ref.watch(credentialGroupsProvider);
     final syncState = ref.watch(syncProvider);
     final activeFilter = _search.isNotEmpty || _typeFilter != null || _noPasswordFilter || _expiredFilter;
+    _prepareSearch(groupsAsync.value ?? const [], ref.watch(folderTreeProvider).value ?? const []);
     final filtered = vaultAsync.value == null
         ? const <CredentialListItem>[]
-        : vaultAsync.value!.credentials.where((c) => _matches(c, vaultAsync.value!.decrypted)).toList();
+        : _filterAndRank(vaultAsync.value!.credentials, vaultAsync.value!.decrypted);
 
     return Scaffold(
       appBar: buildSelectionAwareAppBar(
@@ -223,7 +258,7 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
                     decoration: const InputDecoration(
                       isDense: true,
                       prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search by name, username, or tag…',
+                      hintText: 'Search name, IP, user, notes, tags… (any words)',
                     ),
                     onChanged: (v) => setState(() => _search = v),
                   ),
@@ -283,7 +318,7 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     List<CredentialGroupSummary> groups,
     bool activeFilter,
   ) {
-    final filtered = vault.credentials.where((c) => _matches(c, vault.decrypted)).toList();
+    final filtered = _filterAndRank(vault.credentials, vault.decrypted);
 
     final byGroup = <String, List<CredentialListItem>>{};
     final ungrouped = <CredentialListItem>[];
@@ -296,10 +331,21 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
       }
     }
 
+    int groupRank(CredentialGroupSummary g) =>
+        (_matchedGroupIds.contains(g.id) ? 100000 : 0) +
+        (byGroup[g.id] ?? const <CredentialListItem>[])
+            .fold<int>(0, (m, c) => _rank(c, vault.decrypted) > m ? _rank(c, vault.decrypted) : m);
     final visibleGroups = groups
-        .where((g) => !activeFilter || (byGroup[g.id]?.isNotEmpty ?? false))
+        .where((g) =>
+            !activeFilter || (byGroup[g.id]?.isNotEmpty ?? false) || _matchedGroupIds.contains(g.id))
         .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+      ..sort((a, b) {
+        if (_tokens.isNotEmpty) {
+          final byRank = groupRank(b).compareTo(groupRank(a));
+          if (byRank != 0) return byRank;
+        }
+        return a.name.compareTo(b.name);
+      });
 
     if (vault.credentials.isEmpty && groups.isEmpty) {
       return const EmptyState(icon: Icons.key_outlined, message: 'No credentials yet.');

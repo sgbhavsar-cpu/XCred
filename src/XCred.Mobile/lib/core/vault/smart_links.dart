@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'accounts.dart';
 import 'credential_fields.dart';
 
 bool isValidUrl(String value) {
@@ -75,6 +76,33 @@ String? computeFieldLink(FieldDef field, String value, Map<String, String> allVa
   }
 }
 
+/// "Open" link for one entry of a Windows/Linux server's IP list. SSH links prefill the
+/// username of the account labelled SSH (case-insensitive), if there is one.
+String? serverIpLink(String? linkType, String ip, Map<String, String> allValues) {
+  final host = ip.trim();
+  if (host.isEmpty) return null;
+  if (linkType == 'rdp-ip') return rdpLink(host, null);
+  if (linkType == 'ssh-ip') {
+    String? user;
+    for (final a in parseAccounts(allValues[kAccountsKey])) {
+      if (a.label.trim().toLowerCase() == 'ssh' && a.username.trim().isNotEmpty) {
+        user = a.username;
+        break;
+      }
+    }
+    return sshLink(host, user);
+  }
+  return null;
+}
+
+/// Link for one entry of a launchable list-type field, or null if the field has none.
+String? listItemLink(FieldDef field, String item, Map<String, String> allValues) {
+  if (field.linkType == 'network-device-ip') {
+    return networkDeviceLink(allValues['protocol'], item, allValues['port']);
+  }
+  return serverIpLink(field.linkType, item, allValues);
+}
+
 /// MOB-LINK-01 — ssh:/rdp: (and, rarely, telnet:) links only do anything if the device
 /// has a registered handler app; `launchUrl` returns `false` or throws depending on
 /// platform/circumstance when none exists. Either way this must never be silent — the
@@ -106,6 +134,12 @@ String linkTooltip(FieldDef field) {
           'nothing will happen';
     case 'rdp':
       return 'Open with your registered RDP client, if one is configured — otherwise '
+          'nothing will happen';
+    case 'rdp-ip':
+      return 'Open with your registered RDP client, if one is configured — otherwise '
+          'nothing will happen';
+    case 'ssh-ip':
+      return 'Open with your registered SSH handler, if one is configured — otherwise '
           'nothing will happen';
     case 'network-device-ip':
       return 'Open — for Telnet/SSH this needs a registered handler app to actually do '

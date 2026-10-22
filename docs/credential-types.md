@@ -151,9 +151,20 @@ with its related Payment Card, netbanking Website Login, and Mobile Banking PIN 
 | Field | Type | Notes |
 |---|---|---|
 | Server / Domain Name | text | |
-| Username | text | |
-| Password | password | |
-| Notes | textarea | optional |
+| IP Address(es) | list [link] | add as many as needed; IPv4 check shows a warning but never blocks saving; each opens `rdp://` |
+| Users & Passwords | accounts | repeating rows of **Label / Username / Password**; starts with one "Administrator" row |
+
+Windows Server entries saved before multi-user support held a single Username + Password. They show up as a
+first **Default** row when opened and are rewritten in the new shape the next time they are saved (no bulk migration).
+
+## Linux Server *(new)*
+| Field | Type | Notes |
+|---|---|---|
+| Hostname | text | |
+| IP Address(es) | list [link] | same as Windows Server; each opens `ssh://` (prefilled with the SSH row's username) |
+| Users & Passwords | accounts | starts with three rows — **RDP**, **Root**, **SSH** — which can be edited, removed or added to |
+
+`accounts` is stored as a JSON array in the encrypted payload: `[{"label":"SSH","username":"deploy","password":"..."}]`.
 
 ## Email Account *(new)*
 | Field | Type | Notes |

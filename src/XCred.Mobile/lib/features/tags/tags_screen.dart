@@ -11,6 +11,7 @@ import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_csv.dart';
+import '../../core/vault/credential_search.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
@@ -50,14 +51,14 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
     super.dispose();
   }
 
+  List<String> _tokens = const [];
+
   bool _matchesSearch(CredentialListItem c, Map<String, DecryptedCredentialMeta> decrypted) {
     if (_noPasswordFilter && (decrypted[c.id]?.hasPassword ?? true)) return false;
     if (_expiredFilter && !c.isExpired) return false;
-    if (_search.isEmpty) return true;
-    final q = _search.toLowerCase();
+    if (_tokens.isEmpty) return true;
     final meta = decrypted[c.id];
-    return (meta?.name ?? '').toLowerCase().contains(q) ||
-        (meta?.subtitle ?? '').toLowerCase().contains(q);
+    return meta != null && scoreSearchText(meta.searchText, meta.searchName, _tokens) > 0;
   }
 
   Future<void> _exportCsv(List<CredentialListItem> items, Map<String, DecryptedCredentialMeta> decrypted) async {
@@ -200,6 +201,7 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
     final tagsAsync = ref.watch(tagListProvider);
     final vaultAsync = ref.watch(vaultProvider);
     final activeFilter = _search.isNotEmpty || _noPasswordFilter || _expiredFilter;
+    _tokens = tokenizeQuery(_search);
 
     final vault = vaultAsync.value;
     final byTag = <String, List<CredentialListItem>>{};
@@ -253,7 +255,7 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
                     decoration: const InputDecoration(
                       isDense: true,
                       prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search by name or username…',
+                      hintText: 'Search name, IP, user, notes, tags… (any words)',
                     ),
                     onChanged: (v) => setState(() => _search = v),
                   ),
