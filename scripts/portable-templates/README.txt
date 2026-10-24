@@ -12,6 +12,15 @@ QUICK START
 
 That's it. Your data is stored in the app\data folder, right next to the app.
 
+USE IT FROM YOUR PHONE / ANOTHER PC (optional)
+----------------------------------------------
+By default XCred only listens on localhost, so only this computer can open it. To let the XCred
+phone app (or another PC's browser) connect, right-click Enable-Network-Access.ps1 and choose
+"Run with PowerShell". It switches XCred to listen on your network, opens the Windows Firewall
+port, and prints the address to type into the phone app (for example http://192.168.1.20:1507).
+Restart XCred afterwards (Start-XCred.bat) unless you installed the background service.
+It is plain HTTP, so only use it on a network you trust. Run it with -Off to undo.
+
 KEEP IT RUNNING IN THE BACKGROUND (optional)
 ---------------------------------------------
 Start-XCred.bat runs XCred in a console window - closing that window stops the app.

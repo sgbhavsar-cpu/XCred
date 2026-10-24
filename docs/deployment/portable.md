@@ -52,6 +52,28 @@ is untouched (it lives in the file, not the process).
 
 ---
 
+## Using it from a phone or another PC (optional)
+
+Out of the box XCred listens on `localhost` only (`"Urls": "http://localhost:1507"` in
+`app\appsettings.json`), so nothing but the same computer can reach it — including the XCred
+phone app. To open it up to your network, run **`Enable-Network-Access.ps1`** (right-click →
+Run with PowerShell). It:
+
+1. changes `Urls` to `http://0.0.0.0:1507`,
+2. adds an inbound Windows Firewall rule for TCP 1507,
+3. restarts the `XCredVault` service if you installed it (otherwise close and re-run `Start-XCred.bat`),
+4. prints the address(es) to enter in the phone app, e.g. `http://192.168.1.20:1507`.
+
+Run it with `-Off` to go back to localhost-only and remove the firewall rule. Do it by hand instead
+by editing `Urls` in `app\appsettings.json` and allowing the port in Windows Firewall.
+
+Things to know: it is plain HTTP — vault data is end-to-end encrypted, but the login password is
+not, so use it only on a network you trust. A laptop's address can change between networks and
+DHCP leases; re-run the script (or `ipconfig`) to see the current one. The phone and the PC must be
+on the same network (guest Wi-Fi / client isolation blocks it).
+
+---
+
 ## Running in the background (optional)
 
 `Start-XCred.bat` runs XCred in the foreground — the console window itself is the

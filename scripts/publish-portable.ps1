@@ -88,6 +88,7 @@ Step 'Adding launcher scripts'
 Copy-Item (Join-Path $templatesDir 'Start-XCred.bat') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'Install-Service.ps1') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'Uninstall-Service.ps1') $OutputDir -Force
+Copy-Item (Join-Path $templatesDir 'Enable-Network-Access.ps1') $OutputDir -Force
 Copy-Item (Join-Path $templatesDir 'README.txt') $OutputDir -Force
 # Plain-text stamp so anyone can tell which release a folder is without starting it.
 Set-Content -Path (Join-Path $OutputDir 'VERSION.txt') -Value "XCred Portable $version`r`nBuilt $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -Encoding ASCII
