@@ -45,7 +45,11 @@ if (isSqlite)
     }
 }
 
-if (string.IsNullOrEmpty(builder.Configuration["Jwt:Secret"]))
+// appsettings.json ships a "CHANGE_THIS_..." placeholder so a missing secret is obvious in dev. A deployment
+// that never overrides it (e.g. the Docker image) must NOT end up signing tokens with that publicly
+// known value, so treat the placeholder exactly like "no secret configured" and generate a real one.
+var configuredJwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrEmpty(configuredJwtSecret) || configuredJwtSecret.StartsWith("CHANGE_THIS", StringComparison.Ordinal))
 {
     // The IIS installer patches a real secret into appsettings.Production.json as an
     // explicit install step (Setup-XCred.ps1's PageSecurity) — the portable distribution has
