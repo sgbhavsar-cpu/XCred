@@ -1,0 +1,8 @@
+<Project>
+  <!-- Single source of truth for the product version: the VERSION file at the repo root.
+       The web build (vite.config.ts) and the portable packaging script read the same file. -->
+  <PropertyGroup>
+    <XCredVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</XCredVersion>
+    <Version>$(XCredVersion)</Version>
+  </PropertyGroup>
+</Project>

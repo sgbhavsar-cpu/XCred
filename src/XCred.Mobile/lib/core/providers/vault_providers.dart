@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,13 +8,18 @@ import '../api/api_client.dart';
 import '../models/credential_models.dart';
 import '../models/folder_tag_models.dart';
 import '../vault/attachment_repository.dart';
+import '../vault/accounts.dart';
+import '../models/share_models.dart';
+import '../vault/bulk_edit.dart';
 import '../vault/credential_fields.dart';
+import '../vault/credential_search.dart';
 import '../vault/credential_group_repository.dart';
 import '../vault/credential_repository.dart';
 import '../vault/credential_type_meta.dart';
 import '../vault/folder_repository.dart';
 import '../vault/tag_repository.dart';
 import 'core_providers.dart';
+import 'share_providers.dart';
 import 'sync_providers.dart';
 
 final credentialRepositoryProvider = Provider<CredentialRepository>((ref) {
@@ -118,10 +124,12 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
     if (session == null || item == null) return false;
 
     FieldDef? passwordField;
+    var hasAccounts = false;
     for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
-      if (f.type == 'password') { passwordField = f; break; }
+      if (f.type == 'password' && passwordField == null) passwordField = f;
+      if (f.type == 'accounts') hasAccounts = true;
     }
-    if (passwordField == null) return false;
+    if (passwordField == null && !hasAccounts) return false;
 
     final crypto = ref.read(cryptoServiceProvider);
     final data = await crypto.decryptCredentialFields(
@@ -130,13 +138,20 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
       encryptedCredentialKey: item.encryptedCredentialKey,
       privateKey: session.privateKey,
     );
-    final value = data[passwordField.key] as String?;
+    String? value;
+    if (hasAccounts) {
+      for (final a in readAccounts(data)) {
+        if (a.password.isNotEmpty) { value = a.password; break; }
+      }
+    } else {
+      value = data[passwordField!.key] as String?;
+    }
     if (value == null || value.isEmpty) return false;
 
     await Clipboard.setData(ClipboardData(text: value));
     unawaited(ref
         .read(apiClientProvider)
-        .post<String>('/api/credentials/$id/copy?field=${passwordField.key}',
+        .post<String>('/api/credentials/$id/copy?field=${passwordField?.key ?? kAccountsKey}',
             identityFromData<String>, data: null)
         .catchError((_) => ''));
 
@@ -230,6 +245,119 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
     return result;
   }
 
+  /// One bulk edit, any mix of: folder, credential group, expiry, tags, notes, custom fields —
+  /// mirrors the web app's `bulkEdit`. Notes/custom fields live inside the encrypted blob, so
+  /// each selected credential is decrypted, edited and re-encrypted here with its own existing
+  /// key (sharing/wrapping is untouched) and written back in chunked requests. Metadata goes
+  /// through the cheap server-side bulk endpoints.
+  Future<int> bulkEdit({
+    required List<String> credentialIds,
+    required BulkEditChanges changes,
+  }) async {
+    final session = ref.read(authSessionProvider);
+    final repo = ref.read(credentialRepositoryProvider);
+    final selected = [
+      for (final c in state.value?.credentials ?? const <CredentialListItem>[])
+        if (credentialIds.contains(c.id)) c
+    ];
+
+    if (changes.hasDataChange) {
+      if (session == null) throw StateError('Vault is locked.');
+      final crypto = ref.read(cryptoServiceProvider);
+      final items = <Map<String, String>>[];
+      for (final c in selected) {
+        final key = crypto.decryptKeyWithPrivateKey(session.privateKey, c.encryptedCredentialKey);
+        final payload = jsonDecode(await crypto.decrypt(key, c.encryptedData, c.dataIv))
+            as Map<String, dynamic>;
+        final edited = applyDataChanges(payload, changes);
+        final enc = await crypto.encrypt(key, jsonEncode(edited));
+        items.add({'id': c.id, 'encryptedData': enc.ciphertextB64, 'dataIv': enc.ivB64});
+      }
+      for (var i = 0; i < items.length; i += 50) {
+        await repo.bulkUpdateData(items.sublist(i, i + 50 > items.length ? items.length : i + 50));
+      }
+    }
+
+    final expiry = changes.expiry;
+    final plainExpiry = expiry != null && expiry.mode != ExpiryMode.extend;
+    if (changes.updateFolder || changes.updateGroup || plainExpiry) {
+      await repo.bulkAssign(
+        credentialIds: credentialIds,
+        updateFolder: changes.updateFolder,
+        folderId: changes.folderId,
+        updateCredentialGroup: changes.updateGroup,
+        credentialGroupId: changes.groupId,
+        updateExpiry: plainExpiry,
+        expiryDate: plainExpiry && expiry.mode == ExpiryMode.set ? expiry.date : null,
+      );
+    }
+    if (expiry != null && expiry.mode == ExpiryMode.extend) {
+      // "Extend" is relative to each credential's own expiry, so group by the resulting date.
+      final byDate = <String, List<String>>{};
+      for (final c in selected) {
+        (byDate[nextExpiry(c.expiryDate, expiry)!] ??= []).add(c.id);
+      }
+      for (final e in byDate.entries) {
+        await repo.bulkAssign(credentialIds: e.value, updateExpiry: true, expiryDate: e.key);
+      }
+    }
+    if (changes.hasTagChange) {
+      await repo.bulkTags(
+        credentialIds: credentialIds,
+        addTagIds: changes.addTagIds,
+        removeTagIds: changes.removeTagIds,
+      );
+    }
+
+    await refresh();
+    return selected.length;
+  }
+
+  /// Soft-deletes many credentials in one request.
+  Future<BulkResult> bulkDelete(List<String> credentialIds) async {
+    final result = await ref.read(credentialRepositoryProvider).bulkDelete(credentialIds);
+    await refresh();
+    return result;
+  }
+
+  /// Shares every selected credential with one user: for each, unwrap its key with our
+  /// private key, re-wrap it with the recipient's public key (the server never sees a
+  /// plaintext key) and call the same per-credential share endpoint the detail screen uses.
+  /// Failures are counted, not thrown, so one odd credential doesn't abort the rest.
+  Future<({int shared, int failed})> bulkShare({
+    required List<String> credentialIds,
+    required UserSummary recipient,
+    DateTime? expiresAt,
+    bool untilChanged = false,
+  }) async {
+    final session = ref.read(authSessionProvider);
+    if (session == null) throw StateError('Vault is locked.');
+    final crypto = ref.read(cryptoServiceProvider);
+    final shares = ref.read(sharesRepositoryProvider);
+    var shared = 0;
+    var failed = 0;
+    for (final c in state.value?.credentials ?? const <CredentialListItem>[]) {
+      if (!credentialIds.contains(c.id)) continue;
+      try {
+        final key = crypto.decryptKeyWithPrivateKey(session.privateKey, c.encryptedCredentialKey);
+        final wrapped = await crypto.encryptKeyWithPublicKey(recipient.publicKey, key);
+        await shares.create(
+          credentialId: c.id,
+          sharedWithUserId: recipient.id,
+          encryptedData: c.encryptedData,
+          dataIv: c.dataIv,
+          encryptedCredentialKey: wrapped,
+          expiresAt: expiresAt,
+          untilChanged: untilChanged,
+        );
+        shared++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    return (shared: shared, failed: failed);
+  }
+
   Future<VaultState> _load() async {
     // MOB-SYNC-02 — replay any offline-queued edits before fetching, so a load right
     // after reconnecting (cold start or pull-to-refresh) both flushes and shows the
@@ -257,18 +385,39 @@ class VaultNotifier extends AsyncNotifier<VaultState> {
             privateKey: session.privateKey,
           );
           final name = fields['name'] as String?;
-          final subtitle = (fields['username'] ?? fields['email'] ?? fields['emailAddress'] ??
+          String? subtitle = (fields['username'] ?? fields['email'] ?? fields['emailAddress'] ??
               fields['cardholderName'] ?? fields['ssid']) as String?;
           FieldDef? passwordField;
+          var hasAccounts = false;
           for (final f in kCredentialFields[item.type] ?? const <FieldDef>[]) {
-            if (f.type == 'password') { passwordField = f; break; }
+            if (f.type == 'password' && passwordField == null) passwordField = f;
+            if (f.type == 'accounts') hasAccounts = true;
           }
-          final hasPassword = passwordField == null ||
+          var hasPassword = passwordField == null ||
               ((fields[passwordField.key] as String?)?.trim().isNotEmpty ?? false);
+          if (hasAccounts) {
+            // Server types keep many user/password rows: show the first row that has a
+            // password (else the first row) and count the credential as "has a password"
+            // when any row does.
+            final rows = readAccounts(fields);
+            final primary = rows.firstWhere((a) => a.password.isNotEmpty,
+                orElse: () => rows.isNotEmpty ? rows.first : const Account());
+            subtitle = primary.username.isEmpty ? null : primary.username;
+            hasPassword = rows.any((a) => a.password.trim().isNotEmpty);
+          }
+          final displayName = (name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type);
+          final search = buildSearchEntry(
+            type: item.type,
+            name: displayName,
+            tagNames: item.tags.map((t) => t.name),
+            fields: fields,
+          );
           decrypted[item.id] = DecryptedCredentialMeta(
-            name: (name != null && name.isNotEmpty) ? name : credentialTypeLabel(item.type),
+            name: displayName,
             subtitle: subtitle,
             hasPassword: hasPassword,
+            searchText: search.hay,
+            searchName: search.name,
           );
         } catch (_) {
           // A single undecryptable credential (corrupt cache row, key mismatch after a

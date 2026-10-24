@@ -114,9 +114,22 @@ app.MapControllers();
 
 if (!app.Environment.IsDevelopment())
 {
+    // Cache policy for the SPA: build output under /assets carries the version + content hash in
+    // its filename, so it can be cached forever; index.html (and anything else) must be
+    // revalidated every load, otherwise a browser keeps launching the previous release's bundle.
+    var staticFiles = new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            ctx.Context.Response.Headers.CacheControl =
+                ctx.Context.Request.Path.StartsWithSegments("/assets")
+                    ? "public,max-age=31536000,immutable"
+                    : "no-cache";
+        },
+    };
     app.UseDefaultFiles();
-    app.UseStaticFiles();
-    app.MapFallbackToFile("index.html");
+    app.UseStaticFiles(staticFiles);
+    app.MapFallbackToFile("index.html", staticFiles);
 }
 
 app.Run();

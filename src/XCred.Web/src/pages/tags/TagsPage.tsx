@@ -5,12 +5,12 @@ import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { cn, isExpired } from '@/lib/utils';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
+import { useCredentialSearch } from '@/lib/search';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import CredentialRow from '@/components/CredentialRow';
-import SelectionToolbar from '@/components/SelectionToolbar';
+import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
-import BulkTagEditModal from '@/components/BulkTagEditModal';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
 
@@ -18,7 +18,7 @@ const PRESET_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf
 
 export default function TagsPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkTags, copyPassword, duplicateCredential } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
 
   const [tags, setTags] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -33,7 +33,6 @@ export default function TagsPage() {
   const [noPasswordFilter, setNoPasswordFilter] = useState(false);
   const [expiredFilter, setExpiredFilter] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const load = async () => {
     setTagsLoading(true);
@@ -114,27 +113,17 @@ export default function TagsPage() {
     } catch { toast.error('Failed to copy password.'); }
   };
 
-  const applyBulkTagEdit = async (changes: { addTagIds: string[]; removeTagIds: string[] }) => {
-    try {
-      const result = await bulkTags(Array.from(selectedIds), changes);
-      toast.success(`Updated ${result.updated} credential${result.updated !== 1 ? 's' : ''}.`);
-      clearSelection();
-      setShowBulkEdit(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
-    }
-  };
+  const { active: searching, scores } = useCredentialSearch(credentials, decrypted, search);
 
   const matchesSearch = (c: (typeof credentials)[number]) => {
     if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
     if (expiredFilter && !isExpired(c.expiryDate)) return false;
-    if (!search) return true;
-    const d = decrypted.get(c.id);
-    const q = search.toLowerCase();
-    return (d?.name ?? '').toLowerCase().includes(q) || (d?.username ?? '').toLowerCase().includes(q);
+    if (!searching) return true;
+    return scores.has(c.id);
   };
   const activeFilter = !!search || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+  if (searching) visibleCredentials.sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0));
 
   const handleExportCsv = () => {
     downloadCsv(`xcred-tags-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
@@ -208,7 +197,7 @@ export default function TagsPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or username…"
+            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
@@ -220,7 +209,8 @@ export default function TagsPage() {
         <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
       </div>
 
-      <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+      <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
@@ -358,10 +348,6 @@ export default function TagsPage() {
         </div>
       )}
 
-      {showBulkEdit && (
-        <BulkTagEditModal count={selectedIds.size} tags={tags}
-          onApply={applyBulkTagEdit} onClose={() => setShowBulkEdit(false)} />
-      )}
     </div>
   );
 }

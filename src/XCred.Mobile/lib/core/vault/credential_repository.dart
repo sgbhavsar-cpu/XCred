@@ -135,6 +135,8 @@ class CredentialRepository {
     String? folderId,
     bool updateCredentialGroup = false,
     String? credentialGroupId,
+    bool updateExpiry = false,
+    String? expiryDate, // YYYY-MM-DD; null with updateExpiry clears the expiry
   }) async {
     final data = await _api.patch<Map<String, dynamic>>(
       '/api/credentials/bulk-assign',
@@ -145,7 +147,32 @@ class CredentialRepository {
         'folderId': folderId,
         'updateCredentialGroup': updateCredentialGroup,
         'credentialGroupId': credentialGroupId,
+        'updateExpiry': updateExpiry,
+        'expiryDate': expiryDate,
       },
+    );
+    return BulkResult(updated: data['updated'] as int, skipped: data['skipped'] as int);
+  }
+
+  /// Replaces the encrypted payload (data + IV) of many credentials in one call — bulk notes /
+  /// custom-field edits, done client-side because the server never sees plaintext. Each item is
+  /// `{id, encryptedData, dataIv}`; the per-credential key is unchanged. Mirrors web's
+  /// `PATCH /credentials/bulk-update-data`.
+  Future<BulkResult> bulkUpdateData(List<Map<String, String>> items) async {
+    final data = await _api.patch<Map<String, dynamic>>(
+      '/api/credentials/bulk-update-data',
+      (json) => json as Map<String, dynamic>,
+      data: {'items': items},
+    );
+    return BulkResult(updated: data['updated'] as int, skipped: data['skipped'] as int);
+  }
+
+  /// Soft-deletes many credentials in one request. Like [delete], no offline queueing.
+  Future<BulkResult> bulkDelete(List<String> credentialIds) async {
+    final data = await _api.post<Map<String, dynamic>>(
+      '/api/credentials/bulk-delete',
+      (json) => json as Map<String, dynamic>,
+      data: {'credentialIds': credentialIds},
     );
     return BulkResult(updated: data['updated'] as int, skipped: data['skipped'] as int);
   }

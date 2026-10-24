@@ -1,5 +1,6 @@
 import { isValidUrl } from './utils';
 import type { FieldDef } from './vault';
+import { parseAccounts } from './accounts';
 
 // Which schemes are reliable vs. best-effort (researched — see docs/requirements.md §11.1):
 // - http(s):, mailto:, tel: — natively handled by every browser, no setup required.
@@ -78,7 +79,29 @@ export function linkTooltip(field: FieldDef): string {
     case 'tel': return 'Call with your default phone/VoIP app';
     case 'ssh': return 'Open with your registered SSH handler, if one is configured (e.g. Windows OpenSSH or PuTTY registry setup) — otherwise nothing will happen';
     case 'rdp': return 'Open with your registered RDP client, if one is configured to handle rdp:// links — otherwise nothing will happen';
+    case 'rdp-ip': return 'Open with your registered RDP client, if one is configured to handle rdp:// links — otherwise nothing will happen';
+    case 'ssh-ip': return 'Open with your registered SSH handler, if one is configured — otherwise nothing will happen';
     case 'network-device-ip': return 'Open — for Telnet/SSH this needs a registered handler app to actually do anything';
     default: return 'Open in a new tab';
   }
+}
+
+/** "Open" link for one entry of a Windows/Linux server's IP list. SSH links prefill the username of
+ *  the account labelled SSH (case-insensitive), if there is one. */
+export function serverIpLink(linkType: FieldDef['linkType'], ip: string, allValues: Record<string, string>): string | null {
+  const host = ip.trim();
+  if (!host) return null;
+  if (linkType === 'rdp-ip') return rdpLink(host);
+  if (linkType === 'ssh-ip') {
+    const ssh = parseAccounts(allValues.accounts).find(a => a.label.trim().toLowerCase() === 'ssh' && a.username.trim());
+    return sshLink(host, ssh?.username);
+  }
+  return null;
+}
+
+/** Resolver for list-type fields whose items are launchable, or undefined if the field has none. */
+export function listItemLinkResolver(field: FieldDef, allValues: Record<string, string>): ((item: string) => string | null) | undefined {
+  if (field.linkType === 'network-device-ip') return item => networkDeviceLink(allValues.protocol, item, allValues.port);
+  if (field.linkType === 'rdp-ip' || field.linkType === 'ssh-ip') return item => serverIpLink(field.linkType, item, allValues);
+  return undefined;
 }

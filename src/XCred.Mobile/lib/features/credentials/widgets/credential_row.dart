@@ -42,7 +42,7 @@ class CredentialRow extends ConsumerWidget {
   final VoidCallback? onLongPress;
 
   bool get _hasPasswordField =>
-      (kCredentialFields[cred.type] ?? const []).any((f) => f.type == 'password');
+      (kCredentialFields[cred.type] ?? const []).any((f) => f.type == 'password' || f.type == 'accounts');
 
   Future<void> _openActions(BuildContext context, WidgetRef ref) async {
     final action =

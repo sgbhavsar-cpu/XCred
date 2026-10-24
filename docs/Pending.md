@@ -39,7 +39,7 @@
 15. First page dashboard - Click on card to open that.
 16. Fav implementation and display the fav on dashboard page.
 17. Add filter by folder or tags on top of credential page.
-20. Common search should search from notes or any other field. If required we can implement elastic search if available on pc.
+20. ~~Common search should search from notes or any other field.~~ Done (web + mobile): contains-match, any word in any order, ranked, all non-secret fields incl. notes/custom fields/tags; folder/group name matches pull in everything inside. Runs client-side because data is end-to-end encrypted, so Elasticsearch is not applicable.
 21.
 
 ===
@@ -49,3 +49,5 @@ The dev backend (Docker Compose — API + SQL Server) should still be running at
 Test account: username xcred_admin, login password LoginPassword#2026, master password Admin@#1234%^&*().
 To reinstall/run the current app build once the emulator is up: flutter run -d emulator-5554 from src/XCred.Mobile (with flutter's bin on your PATH), or flutter test integration_test/<name>_test.dart -d emulator-5554 to run any of the integration tests we built
 
+
+21. ~~Mobile parity for the bulk actions~~ Done: Bulk Edit sheet (folder, group, tags, expiry, notes, custom fields) plus Share / Export CSV / Delete in the selection overflow menu. Unit + widget tests pass; not yet exercised on an emulator/device.

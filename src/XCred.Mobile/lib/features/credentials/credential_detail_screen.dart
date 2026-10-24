@@ -12,6 +12,7 @@ import '../../core/models/share_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/share_providers.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/vault/accounts.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
@@ -71,7 +72,9 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
       final fd = <String, String>{};
       final hidden = <String, bool>{};
       for (final f in typeFields) {
-        fd[f.key] = (decrypted[f.key] as String?) ?? '';
+        fd[f.key] = f.type == 'accounts'
+            ? encodeAccounts(readAccounts(decrypted))
+            : (decrypted[f.key] as String?) ?? '';
         if (f.type == 'password') hidden[f.key] = true;
       }
 
@@ -609,7 +612,10 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
 
   Widget _buildFieldRow(FieldDef field) {
     final value = _fields[field.key] ?? '';
-    if (value.isEmpty || (field.type == 'list' && value == '[]')) return const SizedBox.shrink();
+    if (value.isEmpty || ((field.type == 'list' || field.type == 'accounts') && value == '[]')) {
+      return const SizedBox.shrink();
+    }
+    if (field.type == 'accounts') return _buildAccountsRow(field, value);
 
     final isList = field.type == 'list';
     List<String>? listItems;
@@ -637,9 +643,7 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
                 const SizedBox(height: 2),
                 if (listItems != null)
                   ...listItems.map((item) {
-                    final itemHref = field.linkType == 'network-device-ip'
-                        ? networkDeviceLink(_fields['protocol'], item, _fields['port'])
-                        : null;
+                    final itemHref = listItemLink(field, item, _fields);
                     return Row(
                       children: [
                         Expanded(child: Text(item)),
@@ -681,6 +685,78 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
             onPressed: () => _copy(displayValue, field.key),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Server credentials: one block per saved user — label, username, password — each with
+  /// its own show/hide and copy buttons.
+  Widget _buildAccountsRow(FieldDef field, String value) {
+    final accounts = parseAccounts(value);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(field.label.toUpperCase(), style: _labelStyle(context)),
+          const SizedBox(height: 4),
+          for (var i = 0; i < accounts.length; i++) _buildAccountBlock(field, accounts[i], i),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountBlock(FieldDef field, Account a, int i) {
+    final pwKey = '${field.key}_${i}_password';
+    final userKey = '${field.key}_${i}_username';
+    final pwHidden = _hidden[pwKey] ?? true;
+    return Card(
+      key: ValueKey('account_row_$i'),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (a.label.isNotEmpty)
+              Text(a.label,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.primary)),
+            Row(
+              children: [
+                Expanded(child: Text(a.username.isEmpty ? '—' : a.username)),
+                if (a.username.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    tooltip: 'Copy username',
+                    onPressed: () => _copy(a.username, userKey),
+                  ),
+              ],
+            ),
+            if (a.password.isNotEmpty)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(pwHidden ? '•' * 12 : a.password,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                  ),
+                  IconButton(
+                    icon: Icon(pwHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        size: 18),
+                    tooltip: pwHidden ? 'Show password' : 'Hide password',
+                    onPressed: () => setState(() => _hidden[pwKey] = !pwHidden),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    tooltip: 'Copy password',
+                    onPressed: () => _copy(a.password, pwKey),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

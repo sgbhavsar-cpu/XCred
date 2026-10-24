@@ -8,6 +8,7 @@ import '../../core/api/api_response.dart';
 import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
+import '../../core/vault/accounts.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_repository.dart';
 import '../../core/vault/credential_type_meta.dart';
@@ -57,6 +58,30 @@ class _CustomFieldInput {
   }
 }
 
+/// One editable Label / Username / Password row of a server credential's `accounts` field.
+class _AccountInput {
+  final TextEditingController labelController;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  bool hidden = true;
+  _AccountInput([Account a = const Account()])
+      : labelController = TextEditingController(text: a.label),
+        usernameController = TextEditingController(text: a.username),
+        passwordController = TextEditingController(text: a.password);
+
+  Account toAccount() => Account(
+        label: labelController.text,
+        username: usernameController.text,
+        password: passwordController.text,
+      );
+
+  void dispose() {
+    labelController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+  }
+}
+
 class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
   final _formKey = GlobalKey<FormState>();
   String _type = 'WebsiteLogin';
@@ -64,6 +89,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
   final _notesController = TextEditingController();
   Map<String, TextEditingController> _fieldControllers = {};
   Map<String, List<TextEditingController>> _listFieldControllers = {};
+  Map<String, List<_AccountInput>> _accountInputs = {};
   final Map<String, bool> _hiddenPassword = {};
   final List<_CustomFieldInput> _customFields = [];
   String? _folderId;
@@ -103,6 +129,11 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
         c.dispose();
       }
     }
+    for (final rows in _accountInputs.values) {
+      for (final r in rows) {
+        r.dispose();
+      }
+    }
     for (final cf in _customFields) {
       cf.dispose();
     }
@@ -118,10 +149,21 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
         c.dispose();
       }
     }
+    for (final rows in _accountInputs.values) {
+      for (final r in rows) {
+        r.dispose();
+      }
+    }
     final fieldControllers = <String, TextEditingController>{};
     final listFieldControllers = <String, List<TextEditingController>>{};
+    final accountInputs = <String, List<_AccountInput>>{};
     for (final field in kCredentialFields[type] ?? const []) {
-      if (field.type == 'list') {
+      if (field.type == 'accounts') {
+        // New credential: type defaults (Linux: RDP/Root/SSH). Editing: the saved rows, with
+        // an old Windows entry's single username/password surfacing as a "Default" row.
+        final rows = initialValues == null ? defaultAccounts(type) : readAccounts(initialValues);
+        accountInputs[field.key] = rows.map(_AccountInput.new).toList();
+      } else if (field.type == 'list') {
         List<String> items = [];
         final raw = initialValues?[field.key] as String?;
         if (raw != null) {
@@ -142,6 +184,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
     setState(() {
       _fieldControllers = fieldControllers;
       _listFieldControllers = listFieldControllers;
+      _accountInputs = accountInputs;
     });
   }
 
@@ -257,6 +300,9 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
       };
       for (final entry in _fieldControllers.entries) {
         payload[entry.key] = entry.value.text;
+      }
+      for (final entry in _accountInputs.entries) {
+        payload[entry.key] = encodeAccounts(entry.value.map((r) => r.toAccount()));
       }
       for (final entry in _listFieldControllers.entries) {
         payload[entry.key] =
@@ -397,6 +443,7 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
   }
 
   Widget _buildField(FieldDef field) {
+    if (field.type == 'accounts') return _buildAccountsField(field);
     if (field.type == 'list') return _buildListField(field);
     if (field.type == 'select') {
       final controller = _fieldControllers[field.key]!;
@@ -455,8 +502,120 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
     );
   }
 
-  Map<String, String> _currentFieldValues() =>
-      {for (final e in _fieldControllers.entries) e.key: e.value.text};
+  Map<String, String> _currentFieldValues() => {
+        for (final e in _fieldControllers.entries) e.key: e.value.text,
+        for (final e in _accountInputs.entries) e.key: encodeAccounts(e.value.map((r) => r.toAccount())),
+      };
+
+  Widget _buildAccountsField(FieldDef field) {
+    final rows = _accountInputs[field.key] ?? [];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(field.label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
+        for (var i = 0; i < rows.length; i++)
+          Card(
+            key: ValueKey('account_${field.key}_$i'),
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          key: ValueKey('account_label_$i'),
+                          controller: rows[i].labelController,
+                          decoration: const InputDecoration(
+                              labelText: 'Label', hintText: 'RDP, Root, SSH…', isDense: true),
+                        ),
+                      ),
+                      IconButton(
+                        key: ValueKey('account_delete_$i'),
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        tooltip: 'Remove account',
+                        onPressed: () => setState(() {
+                          rows[i].dispose();
+                          rows.removeAt(i);
+                        }),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8, top: 8),
+                    child: TextFormField(
+                      key: ValueKey('account_username_$i'),
+                      controller: rows[i].usernameController,
+                      decoration: const InputDecoration(labelText: 'Username', isDense: true),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8, top: 8),
+                    child: TextFormField(
+                      key: ValueKey('account_password_$i'),
+                      controller: rows[i].passwordController,
+                      obscureText: rows[i].hidden,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        isDense: true,
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                  rows[i].hidden
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  size: 18),
+                              tooltip: rows[i].hidden ? 'Show password' : 'Hide password',
+                              onPressed: () => setState(() => rows[i].hidden = !rows[i].hidden),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.auto_fix_high, size: 18),
+                              tooltip: 'Generate password',
+                              onPressed: () => _openGenerator(rows[i].passwordController),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        TextButton.icon(
+          key: const ValueKey('account_add'),
+          onPressed: () => setState(() => rows.add(_AccountInput())),
+          icon: const Icon(Icons.add, size: 16),
+          label: Text(rows.isEmpty ? 'Add user' : 'Add another user'),
+        ),
+      ],
+    );
+  }
+
+  /// Non-blocking hint under an IP list item (the credential can still be saved).
+  String? _listWarning(FieldDef field, List<TextEditingController> controllers, int i) {
+    if (field.validate != 'ipv4') return null;
+    final v = controllers[i].text.trim();
+    if (v.isEmpty) return null;
+    if (!isValidIPv4(v)) return 'Not a valid IPv4 address (e.g. 192.168.1.10) — you can still save.';
+    final first = controllers.indexWhere((c) => c.text.trim() == v);
+    return first != i ? 'Duplicate address.' : null;
+  }
+
+  Widget? _listItemLinkButton(FieldDef field, String item) {
+    if (field.linkType == null || item.trim().isEmpty) return null;
+    final href = listItemLink(field, item, _currentFieldValues());
+    return IconButton(
+      icon: const Icon(Icons.open_in_new, size: 18),
+      tooltip: href != null ? linkTooltip(field) : 'Select a protocol first',
+      onPressed: href == null ? null : () => openSmartLink(context, href),
+    );
+  }
 
   Widget _buildListField(FieldDef field) {
     final controllers = _listFieldControllers[field.key] ?? [];
@@ -469,12 +628,19 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: TextFormField(
                     key: ValueKey('list_${field.key}_$i'),
                     controller: controllers[i],
-                    decoration: InputDecoration(hintText: field.placeholder, isDense: true),
+                    decoration: InputDecoration(
+                      hintText: field.placeholder,
+                      isDense: true,
+                      helperText: _listWarning(field, controllers, i),
+                      helperStyle: const TextStyle(color: Colors.orange),
+                      suffixIcon: _listItemLinkButton(field, controllers[i].text),
+                    ),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),

@@ -12,7 +12,8 @@ import type { FieldDef } from '@/lib/vault';
 import { bytesToBase64, decrypt, decryptKeyWithPrivateKey, encrypt, encryptKeyWithPublicKey } from '@/lib/crypto';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import { computeFieldLink, openSmartLink, linkTooltip, networkDeviceLink } from '@/lib/links';
+import { computeFieldLink, openSmartLink, linkTooltip, listItemLinkResolver } from '@/lib/links';
+import { parseAccounts, readAccounts } from '@/lib/accounts';
 
 interface CredentialDetail {
   id: string; type: string; encryptedData: string; dataIv: string; encryptedCredentialKey: string;
@@ -68,7 +69,7 @@ export default function CredentialDetailPage() {
       const fd: Record<string, string> = {};
       const defHidden: Record<string, boolean> = {};
       (CREDENTIAL_FIELDS[c.type] ?? []).forEach(f => {
-        fd[f.key] = (decrypted[f.key] as string) ?? '';
+        fd[f.key] = f.type === 'accounts' ? JSON.stringify(readAccounts(decrypted)) : (decrypted[f.key] as string) ?? '';
         if (f.type === 'password') defHidden[f.key] = true;
       });
       setFields(fd);
@@ -290,7 +291,51 @@ export default function CredentialDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden mb-4">
         {typeFields.map(field => {
           const value = fields[field.key] ?? '';
-          if (!value || (field.type === 'list' && value === '[]')) return null;
+          if (!value || ((field.type === 'list' || field.type === 'accounts') && value === '[]')) return null;
+          if (field.type === 'accounts') {
+            return (
+              <div key={field.key} data-field={field.key} className="px-5 py-3.5">
+                <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">{field.label}</p>
+                <div className="space-y-2">
+                  {parseAccounts(value).map((a, i) => {
+                    const pwKey = `${field.key}_${i}_password`;
+                    const pwHidden = hidden[pwKey] ?? true;
+                    return (
+                      <div key={i} data-account-row className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                        {a.label && <p className="text-xs font-semibold text-indigo-600 mb-1">{a.label}</p>}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-slate-800 break-all">{a.username || <span className="text-slate-300">—</span>}</p>
+                          {a.username && (
+                            <button onClick={() => copy(a.username, `${field.key}_${i}_username`)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Copy username">
+                              {copied[`${field.key}_${i}_username`] ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                        {a.password && (
+                          <div className="flex items-center justify-between gap-2">
+                            <p className={cn('text-sm text-slate-800 break-all', pwHidden ? 'font-mono tracking-widest text-slate-400' : 'font-mono')}>
+                              {pwHidden ? '•'.repeat(12) : a.password}
+                            </p>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button onClick={() => setHidden(prev => ({ ...prev, [pwKey]: !(prev[pwKey] ?? true) }))}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors" title={pwHidden ? 'Show' : 'Hide'}>
+                                {pwHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => copy(a.password, pwKey)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Copy password">
+                                {copied[pwKey] ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
           const isHidden = hidden[field.key] ?? false;
           const listItems = field.type === 'list' ? safeParseList(value) : null;
           const displayValue = listItems ? listItems.join(', ') : value;
@@ -302,9 +347,7 @@ export default function CredentialDetailPage() {
                 {listItems ? (
                   <ul className="text-sm text-slate-800 mt-0.5 space-y-1">
                     {listItems.map((item, i) => {
-                      const itemHref = field.linkType === 'network-device-ip'
-                        ? networkDeviceLink(fields.protocol, item, fields.port)
-                        : null;
+                      const itemHref = listItemLinkResolver(field, fields)?.(item) ?? null;
                       return (
                         <li key={i} className="flex items-center gap-1.5">
                           <span className="break-all">{item}</span>

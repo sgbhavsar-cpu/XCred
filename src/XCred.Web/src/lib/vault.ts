@@ -29,14 +29,19 @@ export async function decryptCredentialData(
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'textarea' | 'select' | 'url' | 'list';
+  type: 'text' | 'password' | 'textarea' | 'select' | 'url' | 'list' | 'accounts';
   placeholder?: string;
   optional?: boolean;
   options?: string[];
   rows?: number;
   // Drives the "open" action shown next to the field (see lib/links.ts). 'url'-type fields
   // already get an open action via `type`; this covers everything else that's launchable.
-  linkType?: 'email' | 'tel' | 'ssh' | 'network-device-ip' | 'rdp';
+  linkType?: 'email' | 'tel' | 'ssh' | 'network-device-ip' | 'rdp' | 'rdp-ip' | 'ssh-ip';
+  // Secret values that aren't `password`-typed (card numbers, private keys, recovery codes, …):
+  // excluded from search exactly like password fields are.
+  noSearch?: boolean;
+  // Show a non-blocking inline warning for list items that don't look like this kind of value.
+  validate?: 'ipv4';
 }
 
 export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
@@ -44,7 +49,7 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'url', label: 'URL', type: 'url', placeholder: 'https://example.com' },
     { key: 'username', label: 'Username / Email', type: 'text', placeholder: 'you@example.com' },
     { key: 'password', label: 'Password', type: 'password' },
-    { key: 'totp', label: 'TOTP Secret', type: 'text', placeholder: 'Optional', optional: true },
+    { key: 'totp', label: 'TOTP Secret', type: 'text', placeholder: 'Optional', optional: true, noSearch: true },
     { key: 'recoveryEmail', label: 'Recovery Email', type: 'text', optional: true, linkType: 'email' },
     { key: 'recoveryPhone', label: 'Recovery Phone', type: 'text', optional: true, linkType: 'tel' },
   ],
@@ -65,13 +70,13 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   SshKey: [
     { key: 'host', label: 'Host / Server', type: 'text', placeholder: 'server.example.com', optional: true, linkType: 'ssh' },
     { key: 'username', label: 'Username', type: 'text', optional: true },
-    { key: 'privateKey', label: 'Private Key', type: 'textarea', placeholder: '-----BEGIN RSA PRIVATE KEY-----', rows: 6 },
+    { key: 'privateKey', label: 'Private Key', type: 'textarea', placeholder: '-----BEGIN RSA PRIVATE KEY-----', rows: 6, noSearch: true },
     { key: 'publicKey', label: 'Public Key', type: 'textarea', placeholder: 'ssh-rsa AAAA…', optional: true, rows: 3 },
     { key: 'passphrase', label: 'Passphrase', type: 'password', optional: true },
   ],
   CreditCard: [
     { key: 'cardholderName', label: 'Cardholder Name', type: 'text' },
-    { key: 'cardNumber', label: 'Card Number', type: 'text', placeholder: '•••• •••• •••• ••••' },
+    { key: 'cardNumber', label: 'Card Number', type: 'text', placeholder: '•••• •••• •••• ••••', noSearch: true },
     { key: 'cardNetwork', label: 'Card Network', type: 'select', optional: true, options: ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Other'] },
     { key: 'expiryMonth', label: 'Expiry Month', type: 'text', placeholder: 'MM' },
     { key: 'expiryYear', label: 'Expiry Year', type: 'text', placeholder: 'YYYY' },
@@ -95,13 +100,13 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
     { key: 'vendor', label: 'Vendor', type: 'text', optional: true },
   ],
   Certificate: [
-    { key: 'certificate', label: 'Certificate (PEM)', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----', rows: 6 },
-    { key: 'privateKey', label: 'Private Key (PEM)', type: 'textarea', placeholder: '-----BEGIN PRIVATE KEY-----', optional: true, rows: 6 },
+    { key: 'certificate', label: 'Certificate (PEM)', type: 'textarea', placeholder: '-----BEGIN CERTIFICATE-----', rows: 6, noSearch: true },
+    { key: 'privateKey', label: 'Private Key (PEM)', type: 'textarea', placeholder: '-----BEGIN PRIVATE KEY-----', optional: true, rows: 6, noSearch: true },
     { key: 'passphrase', label: 'Passphrase', type: 'password', optional: true },
     { key: 'issuer', label: 'Issuer / CA', type: 'text', optional: true },
   ],
   EnvironmentVariables: [
-    { key: 'content', label: 'Environment Variables (.env format)', type: 'textarea', rows: 10, placeholder: 'DATABASE_URL=postgresql://...\nAPI_KEY=sk-...' },
+    { key: 'content', label: 'Environment Variables (.env format)', type: 'textarea', rows: 10, placeholder: 'DATABASE_URL=postgresql://...\nAPI_KEY=sk-...', noSearch: true },
   ],
   BankAccount: [
     { key: 'bankName', label: 'Bank Name', type: 'text' },
@@ -138,9 +143,13 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   ],
   WindowsServer: [
     { key: 'serverOrDomainName', label: 'Server / Domain Name', type: 'text', placeholder: 'server01 or contoso.local' },
-    { key: 'username', label: 'Username', type: 'text' },
-    { key: 'password', label: 'Password', type: 'password' },
-    { key: 'notes', label: 'Notes', type: 'textarea', optional: true, rows: 4 },
+    { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.10', linkType: 'rdp-ip', validate: 'ipv4' },
+    { key: 'accounts', label: 'Users & Passwords', type: 'accounts' },
+  ],
+  LinuxServer: [
+    { key: 'hostname', label: 'Hostname', type: 'text', placeholder: 'web01.example.com' },
+    { key: 'ipAddresses', label: 'IP Address(es)', type: 'list', placeholder: '192.168.1.20', linkType: 'ssh-ip', validate: 'ipv4' },
+    { key: 'accounts', label: 'Users & Passwords', type: 'accounts' },
   ],
   EmailAccount: [
     { key: 'emailAddress', label: 'Email Address', type: 'text', placeholder: 'you@example.com', linkType: 'email' },
@@ -166,7 +175,7 @@ export const CREDENTIAL_FIELDS: Record<string, FieldDef[]> = {
   ],
   RecoveryCodes: [
     { key: 'serviceName', label: 'Service Name', type: 'text' },
-    { key: 'codes', label: 'Backup / Recovery Codes', type: 'textarea', rows: 8, placeholder: 'One code per line' },
+    { key: 'codes', label: 'Backup / Recovery Codes', type: 'textarea', rows: 8, placeholder: 'One code per line', noSearch: true },
   ],
   Generic: [
     { key: 'username', label: 'Username', type: 'text', optional: true },

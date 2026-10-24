@@ -129,7 +129,7 @@ export async function dragCredentialOnto(page: Page, credentialName: string, tar
 export async function fillTypeFields(page: Page, fields: FieldDef[], seed: string) {
   const values: Record<string, string> = {};
   for (const field of fields) {
-    if (field.type === 'list') continue;
+    if (field.type === 'list' || field.type === 'accounts') continue;
     const value = sampleValueFor(field, seed);
     const input = fieldInput(page, field.key);
     if (field.type === 'select') {

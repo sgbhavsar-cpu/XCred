@@ -6,6 +6,7 @@ import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable
 import api from '@/api/client';
 import { cn, credentialTypeLabel, isExpired } from '@/lib/utils';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
+import { nameMatches, useCredentialSearch } from '@/lib/search';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
 import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDecryptedCredentials';
@@ -14,10 +15,9 @@ import { useViewMode } from '@/hooks/useViewMode';
 import CredentialRow from '@/components/CredentialRow';
 import CredentialGridView from '@/components/CredentialGridView';
 import ViewModeToggle from '@/components/ViewModeToggle';
-import SelectionToolbar from '@/components/SelectionToolbar';
+import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
-import BulkEditModal from '@/components/BulkEditModal';
 
 interface FolderItem {
   id: string;
@@ -28,17 +28,14 @@ interface FolderItem {
   children: FolderItem[];
 }
 
-interface CredGroupOption { id: string; name: string }
-
 export default function FoldersPage() {
   const navigate = useNavigate();
-  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign, copyPassword, duplicateCredential } = useDecryptedCredentials();
+  const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
   const { viewMode, setViewMode } = useViewMode();
   const [filterType, setFilterType] = useState('');
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(true);
-  const [groups, setGroups] = useState<CredGroupOption[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -46,7 +43,6 @@ export default function FoldersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [search, setSearch] = useState('');
   const [noPasswordFilter, setNoPasswordFilter] = useState(false);
   const [expiredFilter, setExpiredFilter] = useState(false);
@@ -59,14 +55,7 @@ export default function FoldersPage() {
     } finally { setFoldersLoading(false); }
   };
 
-  const loadGroups = async () => {
-    try {
-      const res = await api.get('/credential-groups');
-      setGroups(res.data.data);
-    } catch { /* the bulk-edit group picker just stays empty; not worth a toast */ }
-  };
-
-  useEffect(() => { loadFolders(); loadGroups(); }, []);
+  useEffect(() => { loadFolders(); }, []);
 
   const createFolder = async () => {
     if (!newName.trim()) return;
@@ -174,30 +163,32 @@ export default function FoldersPage() {
     } catch { toast.error('Failed to move credential.'); }
   });
 
-  const applyBulkEdit = async (changes: Parameters<typeof bulkAssign>[1]) => {
-    try {
-      const result = await bulkAssign(Array.from(selectedIds), changes);
-      toast.success(`Updated ${result.updated} credential${result.updated !== 1 ? 's' : ''}.`);
-      clearSelection();
-      setShowBulkEdit(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
-    }
-  };
+  // Search: credential fields always; in the tree view a matching folder name also pulls in every
+  // credential in that folder and its subfolders (grid view is a flat credential table, so there
+  // only the credentials' own fields are searched).
+  const { active: searching, tokens, scores } = useCredentialSearch(credentials, decrypted, search);
+  const matchedFolderIds = new Set<string>();
+  if (searching && viewMode !== 'grid') {
+    const walk = (list: FolderItem[], inherited: boolean) => {
+      for (const f of list) {
+        const hit = inherited || nameMatches(f.name, tokens);
+        if (hit) matchedFolderIds.add(f.id);
+        walk(f.children, hit);
+      }
+    };
+    walk(folders, false);
+  }
 
   const matchesSearch = (c: CredentialListItem) => {
     if (filterType && c.type !== filterType) return false;
     if (noPasswordFilter && decrypted.get(c.id)?.hasPassword !== false) return false;
     if (expiredFilter && !isExpired(c.expiryDate)) return false;
-    if (!search) return true;
-    const d = decrypted.get(c.id);
-    const q = search.toLowerCase();
-    return (d?.name ?? '').toLowerCase().includes(q)
-      || (d?.username ?? '').toLowerCase().includes(q)
-      || c.tags.some(t => t.name.toLowerCase().includes(q));
+    if (!searching) return true;
+    return scores.has(c.id) || (!!c.folderId && matchedFolderIds.has(c.folderId));
   };
   const activeFilter = !!search || !!filterType || noPasswordFilter || expiredFilter;
   const visibleCredentials = credentials.filter(matchesSearch);
+  if (searching) visibleCredentials.sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0));
 
   const handleExportCsv = () => {
     downloadCsv(`xcred-folders-${new Date().toISOString().slice(0, 10)}.csv`, buildCredentialsCsv(visibleCredentials, decrypted));
@@ -240,7 +231,7 @@ export default function FoldersPage() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, username, or tag…"
+            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div className="relative">
@@ -281,12 +272,6 @@ export default function FoldersPage() {
       )}
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, username, or tag…"
-            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
           title="Show only credentials missing a password" />
         <ToolbarIconButton icon={AlertTriangle} active={expiredFilter} onClick={() => setExpiredFilter(v => !v)}
@@ -296,7 +281,8 @@ export default function FoldersPage() {
         <SelectAllButton allSelected={allVisibleSelected} onToggle={toggleSelectAll} disabled={visibleCredentials.length === 0} />
       </div>
 
-      <SelectionToolbar count={selectedIds.size} onBulkEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+      <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
@@ -410,10 +396,6 @@ export default function FoldersPage() {
         </DndContext>
       )}
 
-      {showBulkEdit && (
-        <BulkEditModal count={selectedIds.size} folders={flatFolders} groups={groups}
-          onApply={applyBulkEdit} onClose={() => setShowBulkEdit(false)} />
-      )}
     </div>
   );
 }

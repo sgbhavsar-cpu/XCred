@@ -31,7 +31,7 @@ export default function CredentialRow({
   onToggleSelect?: () => void;
 }) {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
-  const hasPasswordField = (CREDENTIAL_FIELDS[cred.type] ?? []).some(f => f.type === 'password');
+  const hasPasswordField = (CREDENTIAL_FIELDS[cred.type] ?? []).some(f => f.type === 'password' || f.type === 'accounts');
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `cred:${cred.id}`,
     disabled: !draggable,

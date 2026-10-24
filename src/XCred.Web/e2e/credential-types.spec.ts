@@ -26,6 +26,16 @@ test.describe('Credential types — create and round-trip decrypt every type', (
         expected[field.key] = value;
       }
 
+      // accounts-type fields (Windows/Linux Server): the form starts with default rows; fill the first.
+      const accountUser = `user-${seed}`;
+      const accountPass = `Pw!${seed}Aa`;
+      for (const field of fields) {
+        if (field.type !== 'accounts') continue;
+        const firstRow = fieldLocator(page, field.key).locator('[data-account-row]').first();
+        await firstRow.getByLabel('Account username').fill(accountUser);
+        await firstRow.getByLabel('Account password').fill(accountPass);
+      }
+
       await page.getByRole('button', { name: 'Save Credential' }).click();
       await expect(page).toHaveURL(/\/credentials$/, { timeout: 10_000 });
 
@@ -38,6 +48,12 @@ test.describe('Credential types — create and round-trip decrypt every type', (
       for (const field of fields) {
         const row = fieldLocator(page, field.key);
         await expect(row).toBeVisible();
+        if (field.type === 'accounts') {
+          await expect(row).toContainText(accountUser);
+          await row.getByTitle('Show', { exact: true }).first().click();
+          await expect(row).toContainText(accountPass);
+          continue;
+        }
         if (field.type === 'password') {
           await row.locator('button').first().click(); // reveal
         }

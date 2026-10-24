@@ -48,7 +48,7 @@ test.describe('Missing-password / expired filters and CSV export', () => {
     await expect(page).toHaveURL(/\/credentials$/, { timeout: 10_000 });
 
     await goToCredentials(page);
-    await page.locator('input[placeholder*="Search by name"]').fill(seed);
+    await page.locator('input[placeholder*="Search"]').fill(seed);
     await expect(page.getByText(withPassword)).toBeVisible();
     await expect(page.getByText(noPassword)).toBeVisible();
     await expect(page.getByText(expired)).toBeVisible();
