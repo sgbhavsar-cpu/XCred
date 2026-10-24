@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown, ExternalLink, Mail, Phone, Terminal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
@@ -283,7 +283,7 @@ export default function CredentialFormPage() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
             {allTags.length === 0
-              ? <p className="text-xs text-slate-400">No tags yet. <a href="/tags" className="text-indigo-600 hover:underline">Create tags</a> first.</p>
+              ? <p className="text-xs text-slate-400">No tags yet. <Link to="/tags" className="text-indigo-600 hover:underline">Create tags</Link> first.</p>
               : (
                 <div className="flex flex-wrap gap-2">
                   {allTags.map(tag => (
@@ -326,7 +326,7 @@ export default function CredentialFormPage() {
               </select>
             </div>
             {allCredentialGroups.length === 0 && (
-              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <a href="/credentials" className="text-indigo-600 hover:underline">Create one</a> to bundle related credentials (e.g. a bank's cards and logins).</p>
+              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <Link to="/credentials" className="text-indigo-600 hover:underline">Create one</Link> to bundle related credentials (e.g. a bank's cards and logins).</p>
             )}
           </div>
 

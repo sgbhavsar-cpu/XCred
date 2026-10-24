@@ -1,3 +1,4 @@
+import { ROUTER_BASENAME } from '@/lib/basePath';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
@@ -30,7 +31,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASENAME}>
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       <Routes>
         {/* Public */}

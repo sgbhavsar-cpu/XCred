@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
+import { API_BASE } from '@/lib/basePath';
 
-const api = axios.create({ baseURL: '/api', withCredentials: true });
+const api = axios.create({ baseURL: API_BASE, withCredentials: true });
 
 api.interceptors.request.use(config => {
   const token = useAuthStore.getState().accessToken;
@@ -40,7 +41,7 @@ api.interceptors.response.use(
       }
 
       try {
-        const res = await axios.post('/api/auth/refresh', { refreshToken }, { withCredentials: true });
+        const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken }, { withCredentials: true });
         const { accessToken, refreshToken: newRefresh } = res.data.data;
         useAuthStore.getState().setTokens(accessToken, newRefresh);
         processQueue(null, accessToken);

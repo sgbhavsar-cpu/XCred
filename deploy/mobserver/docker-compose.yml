@@ -1,0 +1,42 @@
+# XCred behind the existing XContactMgr nginx (mobserver.ssm-infotech.com:1976) at /xcred/.
+#
+# Runs XCred as its own container on the same Docker network as XContactMgr's nginx, so nginx can
+# reach it by name (http://xcred:8080) — no extra host port is published and nothing new needs to be
+# opened in the firewall. SQLite + the generated JWT secret live in the xcred_data volume.
+#
+#   docker compose -f deploy/mobserver/docker-compose.yml up -d --build
+#
+# nginx side: see nginx-xcred.location.conf in this folder.
+name: xcred
+
+services:
+  xcred:
+    container_name: xcred
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: /xcred/
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Database__Provider: Sqlite
+      ConnectionStrings__DefaultConnection: Data Source=/app/data/xcred.db
+      DisableHttpsRedirection: "true"      # TLS is terminated by nginx
+      AllowedOrigins: https://mobserver.ssm-infotech.com:1976
+      # Jwt__Secret is generated on first boot and persisted in /app/data/jwt-secret.txt
+    volumes:
+      - xcred_data:/app/data
+      - xcred_logs:/app/logs
+    networks:
+      - xcm_internal
+
+volumes:
+  xcred_data:
+  xcred_logs:
+
+networks:
+  xcm_internal:
+    external: true
+    name: xcontactmgr_xcm_internal

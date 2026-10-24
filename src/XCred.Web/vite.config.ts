@@ -9,7 +9,11 @@ import fs from 'fs'
 const appVersion = fs.readFileSync(path.resolve(__dirname, '../../VERSION'), 'utf8').trim()
 const buildDate = new Date().toISOString().slice(0, 10)
 
+// Sub-path deployments (e.g. behind nginx at /xcred/) build with VITE_BASE_PATH=/xcred/ ; default is the root.
+const basePath = (process.env.VITE_BASE_PATH ?? '/').replace(/^\/?/, '/').replace(/\/?$/, '/')
+
 export default defineConfig({
+  base: basePath,
   plugins: [react(), tailwindcss()],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),

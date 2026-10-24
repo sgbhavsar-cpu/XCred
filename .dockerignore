@@ -10,3 +10,8 @@ docs
 .claude
 test-results
 playwright-report
+src/XCred.Mobile
+publish-portable
+*.zip
+*.apk
+deploy
