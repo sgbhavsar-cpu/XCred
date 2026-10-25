@@ -133,6 +133,17 @@ class AppDatabase extends _$AppDatabase {
     return (delete(serverConfigTable)..where((t) => t.id.equals(1))).go();
   }
 
+  /// Drops everything cached from the current server — credentials, groups and edits queued
+  /// offline. Called when the active server changes (core/session/server_switch.dart): none of
+  /// these rows record which server they came from.
+  Future<void> clearServerBoundData() async {
+    await transaction(() async {
+      await delete(cachedCredentialsTable).go();
+      await delete(cachedCredentialGroupsTable).go();
+      await delete(pendingMutationsTable).go();
+    });
+  }
+
   Future<List<CredentialListItem>> getCachedCredentials() async {
     final rows = await select(cachedCredentialsTable).get();
     return rows.map(_credentialFromRow).toList();

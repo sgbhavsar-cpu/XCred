@@ -9,6 +9,7 @@ import '../../core/api/api_response.dart';
 import '../../core/crypto/crypto_service.dart';
 import '../../core/models/settings_models.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/server_providers.dart';
 import '../../core/providers/settings_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/session/session_actions.dart';
@@ -420,8 +421,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Change Server?'),
-        content: const Text("You'll be signed out and returned to server setup."),
+        title: const Text('Switch server?'),
+        content: const Text("You'll be signed out and taken to your list of saved servers."),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
           FilledButton(
@@ -629,11 +630,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           _sectionHeader(context, 'SERVER'),
                           Card(
                             child: ListTile(
-                              title: Text(serverUrl ?? ''),
-                              subtitle: const Text('Connected server'),
+                              leading: const Icon(Icons.dns_outlined),
+                              title: Text(ref.watch(activeServerProvider)?.name ?? serverUrl ?? ''),
+                              subtitle: Text(serverUrl ?? ''),
                               trailing: TextButton(
                                 onPressed: _changeServer,
-                                child: const Text('Change'),
+                                child: const Text('Switch'),
                               ),
                             ),
                           ),

@@ -7,6 +7,8 @@ import '../../core/auth/auth_repository.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/crypto/crypto_service.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/server_providers.dart';
+import '../setup/servers_sheet.dart';
 import '../session/biometric_enroll_dialog.dart';
 
 /// FR-AUTH-02 — three fields, deliberately not collapsed (see
@@ -101,6 +103,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final serverUrl = ref.watch(serverBaseUrlProvider).value;
+    final activeServer = ref.watch(activeServerProvider);
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -114,13 +117,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Text('Welcome back', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 4),
                 if (serverUrl != null)
-                  GestureDetector(
-                    onTap: () async {
-                      await ref.read(serverBaseUrlProvider.notifier).clear();
-                    },
-                    child: Text(
-                      '$serverUrl  ·  Change',
-                      style: Theme.of(context).textTheme.bodySmall,
+                  // Server switcher: shows the friendly name + address, opens the saved list.
+                  InkWell(
+                    key: const ValueKey('server_switcher'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _submitting ? null : () => showServersSheet(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).dividerColor),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.dns_outlined, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(activeServer?.name ?? serverUrl,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                                if (activeServer != null)
+                                  Text(serverUrl,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context).textTheme.bodySmall),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
                     ),
                   ),
                 const SizedBox(height: 24),
