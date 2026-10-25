@@ -35,6 +35,8 @@ export const CREDENTIAL_GRID_COLUMNS: Record<string, GridColumnMap> = {
   EmailAccount: { addressKey: 'emailAddress', primarySecretKey: 'password' },
   IdentityDocument: { addressKey: 'documentType', secondaryKey: 'fullName', primarySecretKey: 'documentNumber' },
   InsurancePolicy: { addressKey: 'provider', primarySecretKey: 'policyNumber' },
+  // Nothing secret here, so the certificate number sits in the plain "Username" column.
+  LegalCertificate: { addressKey: 'standardName', secondaryKey: 'certificateNumber' },
   RecoveryCodes: { addressKey: 'serviceName', primarySecretKey: 'codes' },
   Generic: { secondaryKey: 'username', primarySecretKey: 'password' },
 };

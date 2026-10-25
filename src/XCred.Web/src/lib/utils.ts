@@ -55,6 +55,7 @@ export function credentialTypeLabel(type: string): string {
     EmailAccount: 'Email Account',
     IdentityDocument: 'Identity Document',
     InsurancePolicy: 'Insurance Policy',
+    LegalCertificate: 'Legal Certificate',
     RecoveryCodes: 'Recovery Codes',
     Generic: 'Generic',
   };
@@ -82,6 +83,7 @@ export function credentialTypeIcon(type: string): string {
     EmailAccount: '📧',
     IdentityDocument: '🪪',
     InsurancePolicy: '🛡️',
+    LegalCertificate: '⚖️',
     RecoveryCodes: '🔢',
     Generic: '🔒',
   };

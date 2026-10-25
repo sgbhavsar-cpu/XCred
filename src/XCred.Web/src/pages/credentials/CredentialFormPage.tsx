@@ -322,7 +322,7 @@ export default function CredentialFormPage() {
 
           {/* Expiry */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Expiry Date <span className="text-slate-400 font-normal text-xs">(optional)</span></label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{type === 'LegalCertificate' ? 'Certification Expiry Date' : 'Expiry Date'} <span className="text-slate-400 font-normal text-xs">(optional)</span></label>
             <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>

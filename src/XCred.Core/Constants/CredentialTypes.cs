@@ -21,6 +21,7 @@ public static class CredentialTypes
     public const string EmailAccount = "EmailAccount";
     public const string IdentityDocument = "IdentityDocument";
     public const string InsurancePolicy = "InsurancePolicy";
+    public const string LegalCertificate = "LegalCertificate";
     public const string RecoveryCodes = "RecoveryCodes";
     public const string Generic = "Generic";
 
@@ -29,6 +30,6 @@ public static class CredentialTypes
         WebsiteLogin, Database, ApiKey, SshKey, CreditCard,
         SecureNote, WiFi, SoftwareLicense, Certificate, EnvironmentVariables,
         BankAccount, MobileBankingPin, NetworkDevice, Rdp, WindowsServer, LinuxServer, EmailAccount,
-        IdentityDocument, InsurancePolicy, RecoveryCodes, Generic
+        IdentityDocument, InsurancePolicy, LegalCertificate, RecoveryCodes, Generic
     ];
 }

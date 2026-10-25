@@ -194,6 +194,29 @@ first **Default** row when opened and are rewritten in the new shape the next ti
 | Premium Due Date | text | optional |
 | Nominee | text | optional |
 
+## Legal Certificate *(new)*
+| Field | Type | Notes |
+|---|---|---|
+| Name | text | the credential's name, like every type |
+| Description | textarea | optional |
+| Standard Name | text | e.g. ISO 27001:2022 |
+| Certificate Number | text | |
+| Certification Expiry Date | — | use the credential's top-level **Expiry Date**, so the Expired badge, expired filter and expiry notifications work |
+| Issuing Authority Name | text | |
+| Issuing Authority Website | url [link] | optional |
+| Verification URL | url [link] | optional |
+| Audited By (Organization Name) | text | optional |
+| Audited By Organization Website | url [link] | optional |
+| Lead Auditor | text | optional |
+| Consultant Organization | text | optional |
+| Consultant Organization Website | url [link] | optional |
+| Lead Consultant | text | optional |
+| Lead Consultant Contact Number | text [tel link] | optional |
+| Lead Consultant Email Address | text [mail link] | optional |
+| Our Representative | text | optional |
+| Our Representative Contact Number | text [tel link] | optional |
+| Our Representative Email Address | text [mail link] | optional |
+
 ## Recovery Codes *(new)*
 | Field | Type | Notes |
 |---|---|---|

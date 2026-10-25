@@ -19,6 +19,7 @@ const Map<String, String> _kTypeLabels = {
   'EmailAccount': 'Email Account',
   'IdentityDocument': 'Identity Document',
   'InsurancePolicy': 'Insurance Policy',
+  'LegalCertificate': 'Legal Certificate',
   'RecoveryCodes': 'Recovery Codes',
   'Generic': 'Generic',
 };
@@ -43,6 +44,7 @@ const Map<String, String> _kTypeIcons = {
   'EmailAccount': '📧',
   'IdentityDocument': '🪪',
   'InsurancePolicy': '🛡️',
+  'LegalCertificate': '⚖️',
   'RecoveryCodes': '🔢',
   'Generic': '🔒',
 };
