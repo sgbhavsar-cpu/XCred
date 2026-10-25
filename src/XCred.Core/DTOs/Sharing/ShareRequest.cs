@@ -14,6 +14,13 @@ public class ShareCredentialRequest
     public string EncryptedCredentialKey { get; set; } = string.Empty;
 }
 
+/// <summary>Edits an existing share's lifetime: new expiry (null = no expiry) and the revoke-on-change flag.</summary>
+public class UpdateShareRequest
+{
+    public DateTime? ExpiresAt { get; set; }
+    public bool UntilChanged { get; set; }
+}
+
 public class SharedCredentialDto
 {
     public Guid Id { get; set; }

@@ -74,6 +74,28 @@ public class SharesController(AppDbContext db, IAuditService audit, IEmailServic
         if (req.SharedWithGroupId.HasValue && !await db.Groups.AnyAsync(g => g.Id == req.SharedWithGroupId))
             return NotFound(ApiResponse<SharedCredentialDto>.Fail("GROUP_NOT_FOUND", "Group not found."));
 
+        // Re-sharing with someone who already has a live share of this credential refreshes that share
+        // (new key wrap/data, expiry, flag) instead of stacking a duplicate row — which also makes
+        // folder/group-wide shares safe to repeat.
+        if (req.SharedWithUserId.HasValue)
+        {
+            var existing = await db.SharedCredentials
+                .Include(s => s.SharedBy).Include(s => s.SharedWithUser).Include(s => s.SharedWithGroup).Include(s => s.Credential)
+                .FirstOrDefaultAsync(s => s.CredentialId == credentialId && s.SharedById == userId
+                    && s.SharedWithUserId == req.SharedWithUserId && !s.IsRevoked);
+            if (existing != null)
+            {
+                existing.EncryptedData = req.EncryptedData;
+                existing.DataIv = req.DataIv;
+                existing.EncryptedCredentialKey = req.EncryptedCredentialKey;
+                existing.ExpiresAt = req.ExpiresAt;
+                existing.UntilChanged = req.UntilChanged;
+                await db.SaveChangesAsync();
+                await audit.LogAsync(userId, AuditActions.ShareUpdated, "SharedCredential", existing.Id, $"{credentialId}", GetIp());
+                return Ok(ApiResponse<SharedCredentialDto>.Ok(MapToDto(existing)));
+            }
+        }
+
         var share = new SharedCredential
         {
             CredentialId = credentialId,
@@ -106,6 +128,26 @@ public class SharesController(AppDbContext db, IAuditService audit, IEmailServic
             .FirstAsync(s => s.Id == share.Id);
 
         return CreatedAtAction(nameof(GetSharedByMe), ApiResponse<SharedCredentialDto>.Ok(MapToDto(created)));
+    }
+
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<SharedCredentialDto>>> Update(Guid id, [FromBody] UpdateShareRequest req)
+    {
+        var userId = GetUserId();
+        var share = await db.SharedCredentials
+            .Include(s => s.SharedBy).Include(s => s.SharedWithUser).Include(s => s.SharedWithGroup).Include(s => s.Credential)
+            .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (share == null) return NotFound(ApiResponse<SharedCredentialDto>.Fail("NOT_FOUND", "Share not found."));
+        if (share.Credential.OwnerId != userId && !User.IsInRole(Roles.Admin)) return Forbid();
+        if (share.IsRevoked) return BadRequest(ApiResponse<SharedCredentialDto>.Fail("REVOKED", "This share has already been stopped."));
+
+        share.ExpiresAt = req.ExpiresAt;
+        share.UntilChanged = req.UntilChanged;
+        await db.SaveChangesAsync();
+        await audit.LogAsync(userId, AuditActions.ShareUpdated, "SharedCredential", id, null, GetIp());
+
+        return Ok(ApiResponse<SharedCredentialDto>.Ok(MapToDto(share)));
     }
 
     [HttpDelete("{id:guid}")]

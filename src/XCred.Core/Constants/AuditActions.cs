@@ -27,6 +27,7 @@ public static class AuditActions
 
     public const string ShareCreated = "ShareCreated";
     public const string ShareRevoked = "ShareRevoked";
+    public const string ShareUpdated = "ShareUpdated";
     public const string ShareAccessed = "ShareAccessed";
     public const string ShareExpired = "ShareExpired";
 

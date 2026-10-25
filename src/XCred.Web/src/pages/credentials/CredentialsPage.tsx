@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Plus, RefreshCw, FolderOpen, ArrowLeft, X,
+  Plus, RefreshCw, FolderOpen, Share2, ArrowLeft, X,
   ChevronDown, ChevronRight, Boxes, Settings, Trash2, ShieldOff, AlertTriangle, FileSpreadsheet,
 } from 'lucide-react';
 import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
@@ -16,6 +16,8 @@ import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
 import SearchInput from '@/components/SearchInput';
+import ScopeShareModal from '@/components/ScopeShareModal';
+import { useCredentialShares } from '@/hooks/useCredentialShares';
 import Select from '@/components/Select';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel, isExpired } from '@/lib/utils';
@@ -37,6 +39,9 @@ export default function CredentialsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { credentials, decrypted, loading, refetch, deleteCredential, bulkAssign, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
   const { viewMode, setViewMode } = useViewMode();
+  const shares = useCredentialShares(decrypted);
+  const sharedNames = (id: string) => shares.activeFor(id).map(s => s.sharedWithUsername ?? s.sharedWithGroupName ?? '?');
+  const [shareScope, setShareScope] = useState<{ title: string; ids: string[] } | null>(null);
 
   // URL-driven context filters (linked from Folders/Tags pages)
   const folderFilter = searchParams.get('folder');
@@ -226,6 +231,12 @@ export default function CredentialsPage() {
     } catch { toast.error('Failed to delete credential group.'); }
   };
 
+  const shareGroup = (group: CredGroup) => {
+    const ids = credentials.filter(c => c.credentialGroupId === group.id).map(c => c.id);
+    if (ids.length === 0) { toast.error('This group has no credentials to share yet.'); return; }
+    setShareScope({ title: group.name, ids });
+  };
+
   const totalVisible = filtered.length;
   const nothingAtAll = credentials.length === 0 && groups.length === 0;
   const anyLoading = loading || groupsLoading;
@@ -336,7 +347,7 @@ export default function CredentialsPage() {
       </div>
 
       <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
-        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} onShared={shares.reload} />
 
       {/* Grid view: flat spreadsheet of every credential matching the current search/type filter.
           Otherwise, tree: credential groups (expandable) + ungrouped credentials. */}
@@ -365,6 +376,7 @@ export default function CredentialsPage() {
             onDelete={handleDelete}
             onTagClick={tagId => setSearchParams({ tag: tagId })}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
+            sharedWith={sharedNames} onShowShares={shares.open}
           />
         )
       ) : visibleGroups.length === 0 && ungrouped.length === 0 ? (
@@ -401,6 +413,10 @@ export default function CredentialsPage() {
                         className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Add credential to this group">
                         <Plus className="w-3.5 h-3.5" />
                       </button>
+                      <button onClick={e => { e.stopPropagation(); shareGroup(group); }} data-testid="share-group"
+                        className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Share every credential in this group">
+                        <Share2 className="w-3.5 h-3.5" />
+                      </button>
                       <button onClick={e => { e.stopPropagation(); navigate(`/credential-groups/${group.id}`); }}
                         className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="Manage group (rename, add existing credential)">
                         <Settings className="w-3.5 h-3.5" />
@@ -429,6 +445,7 @@ export default function CredentialsPage() {
                             onTagClick={tagId => setSearchParams({ tag: tagId })}
                             indent draggable selectable
                             selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                            sharedWith={sharedNames(cred.id)} onShowShares={() => shares.open(cred.id)}
                             folderLabel={cred.folderId ? folderNameById.get(cred.folderId) : undefined}
                             onToggleSelect={() => toggleSelect(cred.id)}
                           />
@@ -458,6 +475,7 @@ export default function CredentialsPage() {
                       onTagClick={tagId => setSearchParams({ tag: tagId })}
                       draggable selectable
                       selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                            sharedWith={sharedNames(cred.id)} onShowShares={() => shares.open(cred.id)}
                             folderLabel={cred.folderId ? folderNameById.get(cred.folderId) : undefined}
                       onToggleSelect={() => toggleSelect(cred.id)}
                     />
@@ -477,6 +495,11 @@ export default function CredentialsPage() {
         </DndContext>
       )}
 
+      {shares.dialog}
+      {shareScope && (
+        <ScopeShareModal title={shareScope.title} ids={shareScope.ids} bulkShare={bulkShare}
+          onDone={shares.reload} onClose={() => setShareScope(null)} />
+      )}
     </div>
   );
 }

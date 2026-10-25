@@ -1,4 +1,4 @@
-import { Eye, Edit2, CopyPlus, KeyRound, Trash2, GripVertical, Folder } from 'lucide-react';
+import { Eye, Edit2, CopyPlus, KeyRound, Trash2, GripVertical, Folder, Share2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, cn } from '@/lib/utils';
 import { CREDENTIAL_FIELDS } from '@/lib/vault';
@@ -14,7 +14,7 @@ import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDec
  *  password-type field — nothing to copy for types that don't. */
 export default function CredentialRow({
   cred, decrypted, onOpen, onEdit, onDuplicate, onCopyPassword, onDelete, onTagClick,
-  indent, draggable, selectable, selected, selectionActive, onToggleSelect, folderLabel,
+  indent, draggable, selectable, selected, selectionActive, onToggleSelect, folderLabel, sharedWith, onShowShares,
 }: {
   cred: CredentialListItem;
   decrypted?: DecryptedCredentialMeta;
@@ -34,6 +34,9 @@ export default function CredentialRow({
   onToggleSelect?: () => void;
   /** Folder path to show as a badge — for pages (Credentials) that don't group rows by folder. */
   folderLabel?: string;
+  /** Names of everyone this credential is currently shared with; shows a clickable icon when non-empty. */
+  sharedWith?: string[];
+  onShowShares?: () => void;
 }) {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
   const hasPasswordField = (CREDENTIAL_FIELDS[cred.type] ?? []).some(f => f.type === 'password' || f.type === 'accounts');
@@ -67,6 +70,13 @@ export default function CredentialRow({
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-slate-800 truncate">{decrypted?.name ?? '…'}</p>
           {isExpired && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">Expired</span>}
+          {sharedWith && sharedWith.length > 0 && (
+            <button type="button" data-testid="shared-icon" onClick={e => { e.stopPropagation(); onShowShares?.(); }}
+              title={`Shared with ${sharedWith.join(', ')} — click to manage`}
+              className="flex items-center gap-0.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full px-1.5 py-0.5 text-[11px] font-medium shrink-0 transition-colors">
+              <Share2 className="w-3 h-3" />{sharedWith.length}
+            </button>
+          )}
         </div>
         <p className="text-xs text-slate-400 truncate">
           {credentialTypeLabel(cred.type)}{decrypted?.username ? ` · ${decrypted.username}` : ''}

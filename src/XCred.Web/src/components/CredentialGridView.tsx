@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, Copy, Check, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Copy, Check, Trash2, Share2 } from 'lucide-react';
 import api from '@/api/client';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, cn } from '@/lib/utils';
 import { CREDENTIAL_GRID_COLUMNS, readGridField } from '@/lib/gridColumns';
@@ -10,7 +10,7 @@ const MASK = '••••••••';
 /** Spreadsheet-style view of every credential at once — the Grid alternative to CredentialRow's
  *  list rendering, toggled via ViewModeToggle on the Credentials and Folders pages. Read-only:
  *  clicking a row opens the full detail/edit page, same as the list view. */
-export default function CredentialGridView({ credentials, decrypted, onOpen, onDelete, onTagClick, selectedIds, onToggleSelect, onToggleSelectAll }: {
+export default function CredentialGridView({ credentials, decrypted, onOpen, onDelete, onTagClick, selectedIds, onToggleSelect, onToggleSelectAll, sharedWith, onShowShares }: {
   credentials: CredentialListItem[];
   decrypted: Map<string, DecryptedCredentialMeta>;
   onOpen: (id: string) => void;
@@ -21,6 +21,9 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleSelectAll?: () => void;
+  /** Names of the people a credential is currently shared with (empty/undefined = not shared). */
+  sharedWith?: (id: string) => string[];
+  onShowShares?: (id: string) => void;
 }) {
   const selectable = !!selectedIds && !!onToggleSelect;
   const selectionActive = selectable && selectedIds.size > 0;
@@ -122,6 +125,13 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-slate-800 truncate">{meta?.name ?? '…'}</span>
                     {isExpired && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">Expired</span>}
+                    {(sharedWith?.(cred.id).length ?? 0) > 0 && (
+                      <button type="button" data-testid="shared-icon" onClick={e => { e.stopPropagation(); onShowShares?.(cred.id); }}
+                        title={`Shared with ${sharedWith!(cred.id).join(', ')} — click to manage`}
+                        className="flex items-center gap-0.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+                        <Share2 className="w-3 h-3" />{sharedWith!(cred.id).length}
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">

@@ -25,12 +25,14 @@ function flattenFolders(nodes: Array<{ id: string; name: string; children?: Fold
  *  Credentials, Folders and Tags pages so all three offer the same bulk actions: Edit (folder, group,
  *  tags, expiry, notes, custom fields), Share, Export CSV and Delete. Folder/group/tag option lists
  *  are fetched when the edit dialog opens, so pages don't each have to supply them. */
-export default function BulkActionBar({ selectedIds, credentials, decrypted, bulk, onClear }: {
+export default function BulkActionBar({ selectedIds, credentials, decrypted, bulk, onClear, onShared }: {
   selectedIds: Set<string>;
   credentials: CredentialListItem[];
   decrypted: Map<string, DecryptedCredentialMeta>;
   bulk: Pick<Bulk, 'bulkEdit' | 'bulkDelete' | 'bulkShare'>;
   onClear: () => void;
+  /** Called after a successful share so the page can refresh its "shared" icons. */
+  onShared?: () => void;
 }) {
   const count = selectedIds.size;
   const [editing, setEditing] = useState(false);
@@ -86,7 +88,7 @@ export default function BulkActionBar({ selectedIds, credentials, decrypted, bul
   const share = async (recipient: ShareRecipient, opts: { expiresAt: string | null; untilChanged: boolean }) => {
     try {
       const r = await bulk.bulkShare(ids, recipient, opts);
-      if (r.shared > 0) toast.success(`Shared ${plural(r.shared)} with ${recipient.username}.`);
+      if (r.shared > 0) { toast.success(`Shared ${plural(r.shared)} with ${recipient.username}.`); onShared?.(); }
       if (r.failed.length > 0) toast.error(`${plural(r.failed.length)} could not be shared.`);
       if (r.failed.length === 0) { onClear(); setSharing(false); }
     } catch (err) {

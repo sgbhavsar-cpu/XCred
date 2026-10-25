@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, RefreshCw, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, RefreshCw, Share2, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -20,6 +20,8 @@ import { QuickCreateFolderModal } from '@/components/QuickCreateModals';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
 import SearchInput from '@/components/SearchInput';
+import ScopeShareModal from '@/components/ScopeShareModal';
+import { useCredentialShares } from '@/hooks/useCredentialShares';
 import Select from '@/components/Select';
 import { apiErrorMessage } from '@/lib/apiError';
 
@@ -36,6 +38,9 @@ export default function FoldersPage() {
   const navigate = useNavigate();
   const { credentials, decrypted, loading: credsLoading, refetch: refetchCredentials, deleteCredential, bulkAssign, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
   const { viewMode, setViewMode } = useViewMode();
+  const shares = useCredentialShares(decrypted);
+  const sharedNames = (id: string) => shares.activeFor(id).map(s => s.sharedWithUsername ?? s.sharedWithGroupName ?? '?');
+  const [shareScope, setShareScope] = useState<{ title: string; ids: string[] } | null>(null);
   const [filterType, setFilterType] = useState('');
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -115,6 +120,14 @@ export default function FoldersPage() {
       await Promise.all([loadFolders(), refetchCredentials()]);
       toast.success('Folder deleted.');
     } catch { toast.error('Failed to delete.'); }
+  };
+
+  const shareFolder = (folder: FolderItem) => {
+    const inTree = new Set<string>();
+    (function collect(f: FolderItem) { inTree.add(f.id); f.children.forEach(collect); })(folder);
+    const ids = credentials.filter(c => c.folderId && inTree.has(c.folderId)).map(c => c.id);
+    if (ids.length === 0) { toast.error('This folder (and its subfolders) has no credentials to share yet.'); return; }
+    setShareScope({ title: folder.name, ids });
   };
 
   const toggleExpand = (id: string) => setExpanded(prev => {
@@ -281,7 +294,7 @@ export default function FoldersPage() {
       </div>
 
       <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
-        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} onShared={shares.reload} />
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
@@ -297,6 +310,7 @@ export default function FoldersPage() {
             onDelete={handleDeleteCredential}
             onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
             selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
+            sharedWith={sharedNames} onShowShares={shares.open}
           />
         )
       ) : nothingAtAll ? (
@@ -351,6 +365,7 @@ export default function FoldersPage() {
                   onDeleteCredential={handleDeleteCredential}
                   onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                   selectedIds={selectedIds} onToggleSelect={toggleSelect}
+                  sharedNames={sharedNames} onShowShares={shares.open} onShareFolder={shareFolder}
                 />
               )}
 
@@ -372,6 +387,7 @@ export default function FoldersPage() {
                         onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                         draggable selectable
                         selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                        sharedWith={sharedNames(cred.id)} onShowShares={() => shares.open(cred.id)}
                         onToggleSelect={() => toggleSelect(cred.id)}
                       />
                     ))}
@@ -396,6 +412,11 @@ export default function FoldersPage() {
         </DndContext>
       )}
 
+      {shares.dialog}
+      {shareScope && (
+        <ScopeShareModal title={shareScope.title} ids={shareScope.ids} bulkShare={bulkShare}
+          onDone={shares.reload} onClose={() => setShareScope(null)} />
+      )}
     </div>
   );
 }
@@ -428,7 +449,7 @@ function FolderTree({
   folders, depth, byFolder, decrypted, expanded, toggleExpand, activeFilter,
   editingId, editName, setEditingId, setEditName, onUpdate, onDelete,
   onAddCredential, onOpenCredential, onEditCredential, onDuplicateCredential, onCopyPassword, onDeleteCredential, onTagClick,
-  selectedIds, onToggleSelect,
+  selectedIds, onToggleSelect, sharedNames, onShowShares, onShareFolder,
 }: {
   folders: FolderItem[]; depth: number;
   byFolder: Map<string, CredentialListItem[]>; decrypted: Map<string, DecryptedCredentialMeta>;
@@ -440,6 +461,7 @@ function FolderTree({
   onEditCredential: (id: string) => void; onDuplicateCredential: (id: string) => void; onCopyPassword: (id: string) => void;
   onDeleteCredential: (id: string, e: React.MouseEvent) => void; onTagClick: (tagId: string) => void;
   selectedIds: Set<string>; onToggleSelect: (id: string) => void;
+  sharedNames: (id: string) => string[]; onShowShares: (id: string) => void; onShareFolder: (folder: FolderItem) => void;
 }) {
   return (
     <>
@@ -485,6 +507,10 @@ function FolderTree({
                       className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Add credential to this folder">
                       <Plus className="w-3.5 h-3.5" />
                     </button>
+                    <button onClick={e => { e.stopPropagation(); onShareFolder(folder); }} data-testid="share-folder"
+                      className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Share every credential in this folder and its subfolders">
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
                     <button onClick={e => { e.stopPropagation(); setEditingId(folder.id); setEditName(folder.name); }}
                       className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Rename">
                       <Edit2 className="w-3.5 h-3.5" />
@@ -515,6 +541,7 @@ function FolderTree({
                       onTagClick={onTagClick}
                       indent draggable selectable
                       selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                      sharedWith={sharedNames(cred.id)} onShowShares={() => onShowShares(cred.id)}
                       onToggleSelect={() => onToggleSelect(cred.id)}
                     />
                   ))}
@@ -535,6 +562,7 @@ function FolderTree({
                   onEditCredential={onEditCredential} onDuplicateCredential={onDuplicateCredential} onCopyPassword={onCopyPassword}
                   onDeleteCredential={onDeleteCredential} onTagClick={onTagClick}
                   selectedIds={selectedIds} onToggleSelect={onToggleSelect}
+                  sharedNames={sharedNames} onShowShares={onShowShares} onShareFolder={onShareFolder}
                 />
               </div>
             )}

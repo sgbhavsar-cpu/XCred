@@ -12,6 +12,7 @@ import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
 import SearchInput from '@/components/SearchInput';
+import { useCredentialShares } from '@/hooks/useCredentialShares';
 import { apiErrorMessage } from '@/lib/apiError';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
@@ -21,6 +22,8 @@ const PRESET_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf
 export default function TagsPage() {
   const navigate = useNavigate();
   const { credentials, decrypted, loading: credsLoading, deleteCredential, bulkEdit, bulkDelete, bulkShare, copyPassword, duplicateCredential } = useDecryptedCredentials();
+  const shares = useCredentialShares(decrypted);
+  const sharedNames = (id: string) => shares.activeFor(id).map(s => s.sharedWithUsername ?? s.sharedWithGroupName ?? '?');
 
   const [tags, setTags] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -208,7 +211,7 @@ export default function TagsPage() {
       </div>
 
       <BulkActionBar selectedIds={selectedIds} credentials={credentials} decrypted={decrypted}
-        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} />
+        bulk={{ bulkEdit, bulkDelete, bulkShare }} onClear={clearSelection} onShared={shares.reload} />
 
       {loading ? (
         <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>
@@ -309,6 +312,7 @@ export default function TagsPage() {
                           onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                           indent selectable
                           selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                          sharedWith={sharedNames(cred.id)} onShowShares={() => shares.open(cred.id)}
                           onToggleSelect={() => toggleSelect(cred.id)}
                         />
                       ))}
@@ -337,6 +341,7 @@ export default function TagsPage() {
                     onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                     selectable
                     selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                          sharedWith={sharedNames(cred.id)} onShowShares={() => shares.open(cred.id)}
                     onToggleSelect={() => toggleSelect(cred.id)}
                   />
                 ))}
@@ -346,6 +351,7 @@ export default function TagsPage() {
         </div>
       )}
 
+      {shares.dialog}
     </div>
   );
 }

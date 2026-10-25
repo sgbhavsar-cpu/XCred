@@ -8,8 +8,10 @@ export interface ShareRecipient { id: string; username: string; email: string; p
 
 /** Share every selected credential with one user. The per-credential key re-wrapping happens in the
  *  browser (useDecryptedCredentials.bulkShare); this is just the recipient/expiry picker. */
-export default function BulkShareModal({ count, onShare, onClose }: {
+export default function BulkShareModal({ count, title, onShare, onClose }: {
   count: number;
+  /** Names the folder / credential group being shared, shown as "from <title>". */
+  title?: string;
   onShare: (recipient: ShareRecipient, opts: { expiresAt: string | null; untilChanged: boolean }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -40,7 +42,7 @@ export default function BulkShareModal({ count, onShare, onClose }: {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-semibold text-slate-800">Share {count} credential{count !== 1 ? 's' : ''}</h3>
+            <h3 className="text-sm font-semibold text-slate-800">Share {count} credential{count !== 1 ? 's' : ''}{title && <> from <span className="text-indigo-700">{title}</span></>}</h3>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded"><X className="w-4 h-4" /></button>
         </div>
