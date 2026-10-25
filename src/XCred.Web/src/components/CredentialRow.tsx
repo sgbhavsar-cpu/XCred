@@ -1,4 +1,4 @@
-import { Eye, Edit2, CopyPlus, KeyRound, Trash2, GripVertical } from 'lucide-react';
+import { Eye, Edit2, CopyPlus, KeyRound, Trash2, GripVertical, Folder } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, cn } from '@/lib/utils';
 import { CREDENTIAL_FIELDS } from '@/lib/vault';
@@ -14,7 +14,7 @@ import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDec
  *  password-type field — nothing to copy for types that don't. */
 export default function CredentialRow({
   cred, decrypted, onOpen, onEdit, onDuplicate, onCopyPassword, onDelete, onTagClick,
-  indent, draggable, selectable, selected, selectionActive, onToggleSelect,
+  indent, draggable, selectable, selected, selectionActive, onToggleSelect, folderLabel,
 }: {
   cred: CredentialListItem;
   decrypted?: DecryptedCredentialMeta;
@@ -32,6 +32,8 @@ export default function CredentialRow({
    *  selection instead of opening it, so a stray click mid-selection can't navigate away. */
   selectionActive?: boolean;
   onToggleSelect?: () => void;
+  /** Folder path to show as a badge — for pages (Credentials) that don't group rows by folder. */
+  folderLabel?: string;
 }) {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
   const hasPasswordField = (CREDENTIAL_FIELDS[cred.type] ?? []).some(f => f.type === 'password' || f.type === 'accounts');
@@ -69,6 +71,11 @@ export default function CredentialRow({
         <p className="text-xs text-slate-400 truncate">
           {credentialTypeLabel(cred.type)}{decrypted?.username ? ` · ${decrypted.username}` : ''}
         </p>
+        {folderLabel && (
+          <p className="text-xs text-amber-700 mt-0.5 truncate flex items-center gap-1" title={`Folder: ${folderLabel}`} data-testid="credential-folder">
+            <Folder className="w-3 h-3 shrink-0" /> {folderLabel}
+          </p>
+        )}
         {cred.tags.length > 0 && (
           <div className="flex gap-1 mt-1.5 flex-wrap">
             {cred.tags.slice(0, 5).map(tag => (

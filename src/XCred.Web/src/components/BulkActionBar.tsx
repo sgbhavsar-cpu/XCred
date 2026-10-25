@@ -53,7 +53,12 @@ export default function BulkActionBar({ selectedIds, credentials, decrypted, bul
   const applyEdit = async (changes: BulkEditChanges) => {
     try {
       const r = await bulk.bulkEdit(ids, changes);
-      toast.success(`Updated ${plural(r.updated)}.`);
+      // Name where things went: the Credentials page doesn't show folders, so a bare "Updated N"
+      // leaves the user unable to tell whether the folder/group change actually landed.
+      const folderName = changes.folder ? (changes.folder.id ? options?.folders.find(f => f.id === changes.folder!.id)?.name : 'no folder') : null;
+      const groupName = changes.group ? (changes.group.id ? options?.groups.find(g => g.id === changes.group!.id)?.name : 'no group') : null;
+      const where = [folderName && `folder: ${folderName}`, groupName && `group: ${groupName}`].filter(Boolean).join(', ');
+      toast.success(`Updated ${plural(r.updated)}${where ? ` (${where})` : ''}.`);
       onClear();
       setEditing(false);
     } catch (err) {

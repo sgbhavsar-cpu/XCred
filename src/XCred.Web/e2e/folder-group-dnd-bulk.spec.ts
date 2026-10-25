@@ -106,7 +106,8 @@ test.describe('Folder/group drag-and-drop and multi-select bulk edit', () => {
     await choose(page, modalSelects.nth(0), folderName); // Folder selector
     await choose(page, modalSelects.nth(1), groupName); // Credential Group selector
     await page.getByRole('button', { name: 'Apply' }).click();
-    await expect(page.getByText('Updated 2 credentials.')).toBeVisible({ timeout: 10_000 });
+    // The toast names where they went, since the Credentials page doesn't otherwise show folders.
+    await expect(page.getByText(`Updated 2 credentials (folder: ${folderName}, group: ${groupName}).`)).toBeVisible({ timeout: 10_000 });
 
     // Verify both credentials now show up under the target group (Credentials page), and
     // independently under the target folder (Folders page) — proving both fields were set.
@@ -115,6 +116,8 @@ test.describe('Folder/group drag-and-drop and multi-select bulk edit', () => {
     await refreshedGroupRow.click();
     await expect(page.getByTestId('credential-row').filter({ hasText: cred1 })).toBeVisible();
     await expect(page.getByTestId('credential-row').filter({ hasText: cred2 })).toBeVisible();
+    // ...and each row shows its folder.
+    await expect(page.getByTestId('credential-row').filter({ hasText: cred1 }).getByTestId('credential-folder')).toHaveText(folderName);
 
     await page.getByRole('link', { name: 'Folders', exact: true }).click();
     const refreshedFolderRow = page.locator('div.cursor-pointer', { hasText: folderName }).filter({ hasText: '2 credentials' });

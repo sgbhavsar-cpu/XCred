@@ -152,6 +152,8 @@ export default function CredentialsPage() {
     .filter(g => !activeFilter || (byGroup.get(g.id)?.length ?? 0) > 0 || matchedGroupIds.has(g.id))
     .sort((a, b) => (searching ? groupRank(b) - groupRank(a) : 0) || a.name.localeCompare(b.name));
 
+  const folderNameById = new Map(folders.map(f => [f.id, f.name]));
+
   const toggleExpand = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -427,6 +429,7 @@ export default function CredentialsPage() {
                             onTagClick={tagId => setSearchParams({ tag: tagId })}
                             indent draggable selectable
                             selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                            folderLabel={cred.folderId ? folderNameById.get(cred.folderId) : undefined}
                             onToggleSelect={() => toggleSelect(cred.id)}
                           />
                         ))}
@@ -455,6 +458,7 @@ export default function CredentialsPage() {
                       onTagClick={tagId => setSearchParams({ tag: tagId })}
                       draggable selectable
                       selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
+                            folderLabel={cred.folderId ? folderNameById.get(cred.folderId) : undefined}
                       onToggleSelect={() => toggleSelect(cred.id)}
                     />
                   ))}
