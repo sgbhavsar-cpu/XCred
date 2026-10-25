@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/saved_login_providers.dart';
 import '../../core/providers/server_providers.dart';
 import '../../core/session/server_switch.dart';
 
@@ -141,13 +142,25 @@ class SavedServersList extends ConsumerWidget {
         ],
       ),
     );
-    if (ok == true) await ref.read(savedServersProvider.notifier).remove(server.id);
+    if (ok != true) return;
+    await ref.read(savedLoginStoreProvider).forget(server.id); // its remembered login goes with it
+    await ref.read(savedServersProvider.notifier).remove(server.id);
+  }
+
+  Future<void> _forgetLogin(BuildContext context, WidgetRef ref, SavedServer server) async {
+    await ref.read(savedLoginStoreProvider).forget(server.id);
+    await ref.read(savedLoginUsernamesProvider.notifier).refresh();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Saved login for "${server.name}" removed.')));
+    }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final servers = ref.watch(savedServersProvider).value ?? const <SavedServer>[];
     final activeUrl = ref.watch(serverBaseUrlProvider).value;
+    final savedUsers = ref.watch(savedLoginUsernamesProvider).value ?? const <String, String>{};
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -157,16 +170,42 @@ class SavedServersList extends ConsumerWidget {
             leading: Icon(s.url == activeUrl ? Icons.radio_button_checked : Icons.radio_button_off,
                 color: s.url == activeUrl ? Theme.of(context).colorScheme.primary : null),
             title: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(s.url, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (savedUsers[s.id] != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.fingerprint, size: 14),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text('Saved login: ${savedUsers[s.id]}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
             trailing: PopupMenuButton<String>(
               key: ValueKey('server_menu_${s.id}'),
               tooltip: 'Server actions',
               onSelected: (v) {
                 if (v == 'edit') _edit(context, ref, s, s.url == activeUrl);
+                if (v == 'forget') _forgetLogin(context, ref, s);
                 if (v == 'delete') _delete(context, ref, s);
               },
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Edit'))),
+                if (savedUsers[s.id] != null)
+                  const PopupMenuItem(
+                      value: 'forget',
+                      child: ListTile(leading: Icon(Icons.no_accounts_outlined), title: Text('Forget saved login'))),
                 if (s.url != activeUrl)
                   const PopupMenuItem(
                       value: 'delete',

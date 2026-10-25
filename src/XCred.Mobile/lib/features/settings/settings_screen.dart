@@ -9,6 +9,7 @@ import '../../core/api/api_response.dart';
 import '../../core/crypto/crypto_service.dart';
 import '../../core/models/settings_models.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/saved_login_providers.dart';
 import '../../core/providers/server_providers.dart';
 import '../../core/providers/settings_providers.dart';
 import '../../core/providers/vault_providers.dart';
@@ -417,6 +418,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// The username remembered for the active server, if any (username only — no prompt needed).
+  String? _savedLoginUser() {
+    final server = ref.watch(activeServerProvider);
+    return server == null ? null : ref.watch(savedLoginUsernamesProvider).value?[server.id];
+  }
+
+  Future<void> _forgetSavedLogin() async {
+    final server = ref.read(activeServerProvider);
+    if (server == null) return;
+    await ref.read(savedLoginStoreProvider).forget(server.id);
+    await ref.read(savedLoginUsernamesProvider.notifier).refresh();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Saved login removed from this device.')));
+    }
+  }
+
   Future<void> _changeServer() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -639,6 +657,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             ),
                           ),
+                          if (_savedLoginUser() != null)
+                            Card(
+                              child: ListTile(
+                                key: const ValueKey('saved_login_tile'),
+                                leading: const Icon(Icons.fingerprint),
+                                title: Text('Saved login: ${_savedLoginUser()}'),
+                                subtitle: const Text('Released only after fingerprint / device unlock'),
+                                trailing: TextButton(
+                                  onPressed: _forgetSavedLogin,
+                                  child: const Text('Forget'),
+                                ),
+                              ),
+                            ),
                           const SizedBox(height: 24),
                           _sectionHeader(context, 'ACCOUNT'),
                           Card(

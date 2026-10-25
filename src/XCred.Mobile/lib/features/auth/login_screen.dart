@@ -7,7 +7,9 @@ import '../../core/auth/auth_repository.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/crypto/crypto_service.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/saved_login_providers.dart';
 import '../../core/providers/server_providers.dart';
+import '../../core/session/saved_login.dart';
 import '../setup/servers_sheet.dart';
 import '../session/biometric_enroll_dialog.dart';
 
@@ -29,6 +31,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _masterPassword = TextEditingController();
   bool _submitting = false;
   String? _error;
+  // "Remember login on this device": until the user touches the switch it simply mirrors
+  // whether this server already has a saved login.
+  bool _remember = false;
+  bool _rememberTouched = false;
 
   @override
   void dispose() {
@@ -38,8 +44,58 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  bool get _effectiveRemember {
+    if (_rememberTouched) return _remember;
+    final server = ref.read(activeServerProvider);
+    final saved = ref.read(savedLoginUsernamesProvider).value;
+    return server != null && saved != null && saved.containsKey(server.id);
+  }
+
+  /// Saves (or forgets) this server's login after a successful sign-in. A storage hiccup must
+  /// never turn a good login into a failed one, so errors are swallowed.
+  Future<void> _persistRememberChoice(bool remember, String username, String loginPassword, String masterPassword) async {
+    final server = ref.read(activeServerProvider);
+    if (server == null) return;
+    try {
+      final store = ref.read(savedLoginStoreProvider);
+      if (remember && (ref.read(biometricAvailableProvider).value ?? false)) {
+        await store.save(server.id,
+            SavedLogin(username: username, loginPassword: loginPassword, masterPassword: masterPassword));
+      } else if (!remember) {
+        await store.forget(server.id);
+      }
+      await ref.read(savedLoginUsernamesProvider.notifier).refresh();
+    } catch (_) {}
+  }
+
+  /// One-tap login: a fresh biometric / device-unlock check releases the saved credentials, which
+  /// then go through the normal login (so a changed password fails here, visibly, like any other).
+  Future<void> _loginWithSaved() async {
+    final server = ref.read(activeServerProvider);
+    if (server == null) return;
+    setState(() => _error = null);
+    final ok = await ref.read(biometricGateProvider).authenticate('Log in to ${server.name}');
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _error = 'Authentication failed or was cancelled.');
+      return;
+    }
+    final saved = await ref.read(savedLoginStoreProvider).read(server.id);
+    if (!mounted) return;
+    if (saved == null) {
+      setState(() => _error = 'No saved login found for this server.');
+      await ref.read(savedLoginUsernamesProvider.notifier).refresh();
+      return;
+    }
+    _username.text = saved.username;
+    _loginPassword.text = saved.loginPassword;
+    _masterPassword.text = saved.masterPassword;
+    await _submit();
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final remember = _effectiveRemember;
     setState(() {
       _submitting = true;
       _error = null;
@@ -50,6 +106,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             loginPassword: _loginPassword.text,
             masterPassword: _masterPassword.text,
           );
+      await _persistRememberChoice(
+          remember, _username.text.trim(), _loginPassword.text, _masterPassword.text);
       await _handlePostLoginEnrollment(session);
       ref.invalidate(resumableSessionProvider);
       ref.read(authSessionProvider.notifier).setSession(session);
@@ -104,6 +162,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final serverUrl = ref.watch(serverBaseUrlProvider).value;
     final activeServer = ref.watch(activeServerProvider);
+    final savedUsers = ref.watch(savedLoginUsernamesProvider).value;
+    final savedUser = activeServer == null ? null : savedUsers?[activeServer.id];
+    final canRemember = ref.watch(biometricAvailableProvider).value ?? false;
+    final remember = _rememberTouched ? _remember : savedUser != null;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -153,6 +215,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                   ),
+                if (savedUser != null) ...[
+                  const SizedBox(height: 16),
+                  FilledButton.tonalIcon(
+                    key: const ValueKey('login_with_saved'),
+                    onPressed: _submitting ? null : _loginWithSaved,
+                    icon: const Icon(Icons.fingerprint),
+                    label: Text('Log in as $savedUser'),
+                  ),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text('or enter your details below',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: _username,
@@ -183,6 +259,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
+                if (canRemember)
+                  SwitchListTile(
+                    key: const ValueKey('remember_login'),
+                    contentPadding: EdgeInsets.zero,
+                    value: remember,
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() {
+                              _rememberTouched = true;
+                              _remember = v;
+                            }),
+                    title: const Text('Remember login on this device'),
+                    subtitle: const Text(
+                        'Your username and both passwords are stored encrypted on this phone for this '
+                        'server, and released only after fingerprint / device unlock.'),
+                  ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
