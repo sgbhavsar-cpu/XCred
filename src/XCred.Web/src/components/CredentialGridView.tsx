@@ -10,13 +10,22 @@ const MASK = '••••••••';
 /** Spreadsheet-style view of every credential at once — the Grid alternative to CredentialRow's
  *  list rendering, toggled via ViewModeToggle on the Credentials and Folders pages. Read-only:
  *  clicking a row opens the full detail/edit page, same as the list view. */
-export default function CredentialGridView({ credentials, decrypted, onOpen, onDelete, onTagClick }: {
+export default function CredentialGridView({ credentials, decrypted, onOpen, onDelete, onTagClick, selectedIds, onToggleSelect, onToggleSelectAll }: {
   credentials: CredentialListItem[];
   decrypted: Map<string, DecryptedCredentialMeta>;
   onOpen: (id: string) => void;
   onDelete: (id: string, e: React.MouseEvent) => void;
   onTagClick: (tagId: string) => void;
+  /** Selection is optional; when supplied a checkbox column leads the grid. While anything is
+   *  selected, clicking a row toggles it instead of opening it. */
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
 }) {
+  const selectable = !!selectedIds && !!onToggleSelect;
+  const selectionActive = selectable && selectedIds.size > 0;
+  const allSelected = selectable && credentials.length > 0 && credentials.every(c => selectedIds.has(c.id));
+  const someSelected = selectable && !allSelected && credentials.some(c => selectedIds.has(c.id));
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState<Set<string>>(new Set());
 
@@ -27,7 +36,7 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
     setRevealed(prev => {
       const next = new Set(prev);
       const key = cellKey(id, field);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
@@ -69,6 +78,14 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            {selectable && (
+              <th className="pl-4 pr-1 py-2.5 w-8">
+                <input type="checkbox" checked={allSelected} aria-label="Select all rows"
+                  ref={el => { if (el) el.indeterminate = someSelected; }}
+                  onChange={() => onToggleSelectAll?.()}
+                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+              </th>
+            )}
             <th className="px-4 py-2.5 whitespace-nowrap">Name</th>
             <th className="px-4 py-2.5 whitespace-nowrap">Type</th>
             <th className="px-4 py-2.5 whitespace-nowrap">Link / IP / Hostname</th>
@@ -83,6 +100,7 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
         <tbody className="divide-y divide-slate-100">
           {credentials.map(cred => {
             const meta = decrypted.get(cred.id);
+            const isSelected = !!selectedIds?.has(cred.id);
             const cols = CREDENTIAL_GRID_COLUMNS[cred.type] ?? {};
             const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
             const address = readGridField(meta?.fields, cols.addressKey);
@@ -90,7 +108,16 @@ export default function CredentialGridView({ credentials, decrypted, onOpen, onD
             const primarySecret = readGridField(meta?.fields, cols.primarySecretKey);
             const secondarySecret = readGridField(meta?.fields, cols.secondarySecretKey);
             return (
-              <tr key={cred.id} onClick={() => onOpen(cred.id)} className="hover:bg-slate-50 cursor-pointer transition-colors">
+              <tr key={cred.id} data-testid="credential-grid-row" data-selected={isSelected ? 'true' : undefined}
+                onClick={() => (selectionActive ? onToggleSelect?.(cred.id) : onOpen(cred.id))}
+                className={cn('cursor-pointer transition-colors', isSelected ? 'bg-indigo-100/70 hover:bg-indigo-100' : 'hover:bg-slate-50')}>
+                {selectable && (
+                  <td className={cn('pl-4 pr-1 py-2.5 w-8', isSelected && 'shadow-[inset_3px_0_0_0_var(--color-indigo-500)]')}>
+                    <input type="checkbox" checked={isSelected} aria-label="Select row"
+                      onClick={e => e.stopPropagation()} onChange={() => onToggleSelect?.(cred.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  </td>
+                )}
                 <td className="px-4 py-2.5 max-w-[16rem]">
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-slate-800 truncate">{meta?.name ?? '…'}</span>

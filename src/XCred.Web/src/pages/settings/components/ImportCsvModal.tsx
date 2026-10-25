@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import Select from '@/components/Select';
 import { X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api from '@/api/client';
 import { encryptCredentialData } from '@/lib/vault';
@@ -103,13 +104,9 @@ export default function ImportCsvModal({ headers, rows, publicKey, onClose, onIm
                 {(Object.keys(FIELD_LABELS) as Array<keyof CsvColumnMapping>).map(field => (
                   <div key={field}>
                     <label className="block text-xs font-medium text-slate-600 mb-1">{FIELD_LABELS[field]}</label>
-                    <select
-                      value={mapping[field] ?? ''}
-                      onChange={e => setMapping(m => ({ ...m, [field]: e.target.value === '' ? null : Number(e.target.value) }))}
-                      className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                      <option value="">— Not in this file —</option>
-                      {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
-                    </select>
+                    <Select size="sm" ariaLabel={FIELD_LABELS[field]} value={mapping[field] === null || mapping[field] === undefined ? '' : String(mapping[field])}
+                      onChange={v => setMapping(m => ({ ...m, [field]: v === '' ? null : Number(v) }))}
+                      options={[{ value: '', label: '— Not in this file —' }, ...headers.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))]} />
                   </div>
                 ))}
               </div>

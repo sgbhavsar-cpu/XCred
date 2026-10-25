@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { deriveKey, decryptPrivateKey } from '@/lib/crypto';
 import { useAuthStore } from '@/store/authStore';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -41,8 +42,8 @@ export default function LoginPage() {
       setCryptoKeys(symmetricKey, privateKey);
 
       navigate('/dashboard');
-    } catch (err: any) {
-      const msg = err.response?.data?.error?.message ?? 'Login failed. Please try again.';
+    } catch (err) {
+      const msg = apiErrorMessage(err, 'Login failed. Please try again.');
       toast.error(msg);
     } finally {
       setLoading(false);

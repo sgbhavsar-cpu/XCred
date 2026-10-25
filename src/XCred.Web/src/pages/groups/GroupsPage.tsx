@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import Select from '@/components/Select';
 import { Plus, Users, UserPlus, UserMinus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface GroupMember { userId: string; username: string; email: string; role: string; joinedAt: string }
 interface Group { id: string; name: string; description: string | null; memberCount: number; myRole: string; createdAt: string; members: GroupMember[] }
@@ -40,7 +42,7 @@ export default function GroupsPage() {
 
   const toggleExpand = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
@@ -51,7 +53,7 @@ export default function GroupsPage() {
       await load();
       setNewName(''); setNewDesc(''); setShowCreate(false);
       toast.success('Team created.');
-    } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to create.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create.')); }
   };
 
   const addMember = async (groupId: string, userId: string) => {
@@ -60,7 +62,7 @@ export default function GroupsPage() {
       await load();
       setAddingMember(null);
       toast.success('Member added.');
-    } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to add member.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to add member.')); }
   };
 
   const removeMember = async (groupId: string, userId: string, username: string) => {
@@ -157,14 +159,10 @@ export default function GroupsPage() {
 
                   {addingMember?.groupId === group.id && (
                     <div className="px-5 py-3 flex gap-2 border-t border-slate-100 bg-indigo-50/50">
-                      <select value={addingMember.userId}
-                        onChange={e => setAddingMember({ groupId: group.id, userId: e.target.value })}
-                        className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                        <option value="">Select user…</option>
-                        {availableUsers.filter(u => !group.members.some(m => m.userId === u.id)).map(u => (
-                          <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
-                        ))}
-                      </select>
+                      <Select className="flex-1" size="sm" ariaLabel="Select user" value={addingMember.userId} placeholder="Select user…"
+                        onChange={v => setAddingMember({ groupId: group.id, userId: v })}
+                        options={availableUsers.filter(u => !group.members.some(m => m.userId === u.id))
+                          .map(u => ({ value: u.id, label: u.username, hint: `(${u.email})` }))} />
                       <button onClick={() => addingMember.userId && addMember(group.id, addingMember.userId)}
                         className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">Add</button>
                       <button onClick={() => setAddingMember(null)} className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50">Cancel</button>

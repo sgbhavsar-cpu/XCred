@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Tag, ChevronDown, ChevronRight, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
@@ -11,6 +11,8 @@ import CredentialRow from '@/components/CredentialRow';
 import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
+import SearchInput from '@/components/SearchInput';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface TagItem { id: string; name: string; color: string; credentialCount: number }
 
@@ -53,7 +55,7 @@ export default function TagsPage() {
       setTags(prev => prev.map(t => t.id === editingId ? { ...t, name: editName.trim(), color: editColor } : t));
       setEditingId(null);
       toast.success('Tag updated.');
-    } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to update.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to update.')); }
   };
 
   const deleteTag = async (id: string) => {
@@ -72,18 +74,18 @@ export default function TagsPage() {
       setTags(prev => [...prev, res.data.data]);
       setNewName(''); setNewColor(PRESET_COLORS[0]); setAdding(false);
       toast.success('Tag created.');
-    } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to create.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create.')); }
   };
 
   const toggleExpand = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
   const toggleSelect = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const clearSelection = () => setSelectedIds(new Set());
@@ -194,12 +196,8 @@ export default function TagsPage() {
       )}
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
-            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
+        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[200px]"
+          placeholder="Search name, IP, user, notes, tags… (any words, any order)" />
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
           title="Show only credentials missing a password" />
         <ToolbarIconButton icon={AlertTriangle} active={expiredFilter} onClick={() => setExpiredFilter(v => !v)}
@@ -310,7 +308,7 @@ export default function TagsPage() {
                           onDelete={e => handleDeleteCredential(cred.id, e)}
                           onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                           indent selectable
-                          selected={selectedIds.has(cred.id)}
+                          selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                           onToggleSelect={() => toggleSelect(cred.id)}
                         />
                       ))}
@@ -338,7 +336,7 @@ export default function TagsPage() {
                     onDelete={e => handleDeleteCredential(cred.id, e)}
                     onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                     selectable
-                    selected={selectedIds.has(cred.id)}
+                    selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                     onToggleSelect={() => toggleSelect(cred.id)}
                   />
                 ))}

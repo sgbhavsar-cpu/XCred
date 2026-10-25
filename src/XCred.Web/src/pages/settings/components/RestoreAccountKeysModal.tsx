@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Eye, EyeOff, AlertTriangle, KeyRound } from 'lucide-react';
 import api from '@/api/client';
 import { deriveKey, decryptPrivateKey, decryptKeyWithPrivateKey, encryptKeyWithPublicKey } from '@/lib/crypto';
+import { apiErrorMessage } from '@/lib/apiError';
 
 // A restore whose backup file carries the exporting account's own crypto material (salt +
 // RSA keypair) — present on every backup exported since VaultBackup v1.1. This is what makes
@@ -10,7 +11,7 @@ import { deriveKey, decryptPrivateKey, decryptKeyWithPrivateKey, encryptKeyWithP
 // EncryptedCredentialKey stays wrapped under a public key this account has no matching private
 // key for, regardless of whether the master password matches (see BackupController.Export's
 // comment for the full mechanics).
-interface BackupWithKeys {
+export interface BackupWithKeys {
   keyDerivationSalt: string;
   publicKey: string;
   encryptedPrivateKey: string;
@@ -89,8 +90,8 @@ export default function RestoreAccountKeysModal({ backup, currentPrivateKey, onC
       });
 
       onVerified(symmetricKey, backupPrivateKey, reEncryptedCredentials.length);
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message ?? 'Failed to apply the restored keys. Please try again.');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to apply the restored keys. Please try again.'));
       setStep('idle');
     }
   };

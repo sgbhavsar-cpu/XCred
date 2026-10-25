@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ChevronDown, ExternalLink, Mail, Phone, Terminal } from 'lucide-react';
+import { Save, X, Plus, Trash2, Eye, EyeOff, Wand2, ExternalLink, Mail, Phone, Terminal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
@@ -12,7 +12,10 @@ import { computeFieldLink, openSmartLink, linkTooltip, listItemLinkResolver } fr
 import { ACCOUNTS_KEY, defaultAccounts, isValidIPv4, parseAccounts, readAccounts } from '@/lib/accounts';
 import type { Account } from '@/lib/accounts';
 import PasswordGeneratorModal from './components/PasswordGeneratorModal';
+import Select from '@/components/Select';
+import { QuickCreateFolderModal, QuickCreateGroupModal } from '@/components/QuickCreateModals';
 import { cn } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface Tag { id: string; name: string; color: string }
 interface Folder { id: string; name: string; parentFolderId: string | null }
@@ -44,20 +47,20 @@ export default function CredentialFormPage() {
   const [allCredentialGroups, setAllCredentialGroups] = useState<CredentialGroup[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(isEdit);
+  const [creating, setCreating] = useState<null | 'folder' | 'group'>(null);
 
-  useEffect(() => {
-    const loadMeta = async () => {
-      const [tagsRes, foldersRes, groupsRes] = await Promise.all([
-        api.get('/tags').catch(() => ({ data: { data: [] } })),
-        api.get('/folders').catch(() => ({ data: { data: [] } })),
-        api.get('/credential-groups').catch(() => ({ data: { data: [] } })),
-      ]);
-      setAllTags(tagsRes.data.data);
-      setAllFolders(flattenFolders(foldersRes.data.data));
-      setAllCredentialGroups(groupsRes.data.data);
-    };
-    loadMeta();
-  }, []);
+  const loadMeta = async () => {
+    const [tagsRes, foldersRes, groupsRes] = await Promise.all([
+      api.get('/tags').catch(() => ({ data: { data: [] } })),
+      api.get('/folders').catch(() => ({ data: { data: [] } })),
+      api.get('/credential-groups').catch(() => ({ data: { data: [] } })),
+    ]);
+    setAllTags(tagsRes.data.data);
+    setAllFolders(flattenFolders(foldersRes.data.data));
+    setAllCredentialGroups(groupsRes.data.data);
+  };
+
+  useEffect(() => { loadMeta(); }, []);
 
   useEffect(() => {
     if (!isEdit || !privateKey) return;
@@ -163,8 +166,8 @@ export default function CredentialFormPage() {
       // Return to wherever the user came from (e.g. the folder/tag/group they clicked
       // "Add Credential" from) rather than always dropping them on the main Credentials list.
       navigate(searchParams.get('returnTo') || '/credentials');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to save credential.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to save credential.'));
     } finally {
       setSaving(false);
     }
@@ -260,12 +263,9 @@ export default function CredentialFormPage() {
                     </button>
                   )}
                 </div>
-                <select value={cf.fieldType} onChange={e => setCustomFields(prev => prev.map((f, j) => j === i ? { ...f, fieldType: e.target.value as 'text' | 'password' | 'url' } : f))}
-                  className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                  <option value="text">Text</option>
-                  <option value="password">Hidden</option>
-                  <option value="url">URL</option>
-                </select>
+                <Select size="sm" className="w-24 shrink-0" ariaLabel="Custom field type" value={cf.fieldType}
+                  onChange={v => setCustomFields(prev => prev.map((f, j) => j === i ? { ...f, fieldType: v as 'text' | 'password' | 'url' } : f))}
+                  options={[{ value: 'text', label: 'Text' }, { value: 'password', label: 'Hidden' }, { value: 'url', label: 'URL' }]} />
                 <button type="button" onClick={() => setCustomFields(prev => prev.filter((_, j) => j !== i))}
                   className="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
                   <Trash2 className="w-3.5 h-3.5" />
@@ -302,14 +302,9 @@ export default function CredentialFormPage() {
           {/* Folder */}
           <div data-field="folderId">
             <label className="block text-sm font-medium text-slate-700 mb-1">Folder</label>
-            <div className="relative">
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <select name="folderId" value={folderId} onChange={e => setFolderId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
-                <option value="">No Folder</option>
-                {allFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
+            <Select name="folderId" ariaLabel="Folder" value={folderId} onChange={setFolderId}
+              options={[{ value: '', label: 'No Folder' }, ...allFolders.map(f => ({ value: f.id, label: f.name }))]}
+              onCreate={() => setCreating('folder')} createTitle="Create a new folder" />
           </div>
 
           {/* Credential Group */}
@@ -317,16 +312,11 @@ export default function CredentialFormPage() {
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Credential Group <span className="text-slate-400 font-normal text-xs">(optional — e.g. group by bank, service)</span>
             </label>
-            <div className="relative">
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <select name="credentialGroupId" value={credentialGroupId} onChange={e => setCredentialGroupId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
-                <option value="">No Credential Group</option>
-                {allCredentialGroups.map(g => <option key={g.id} value={g.id}>{g.icon} {g.name}</option>)}
-              </select>
-            </div>
+            <Select name="credentialGroupId" ariaLabel="Credential Group" value={credentialGroupId} onChange={setCredentialGroupId}
+              options={[{ value: '', label: 'No Credential Group' }, ...allCredentialGroups.map(g => ({ value: g.id, label: g.name, icon: g.icon }))]}
+              onCreate={() => setCreating('group')} createTitle="Create a new credential group" />
             {allCredentialGroups.length === 0 && (
-              <p className="text-xs text-slate-400 mt-1">No credential groups yet. <Link to="/credentials" className="text-indigo-600 hover:underline">Create one</Link> to bundle related credentials (e.g. a bank's cards and logins).</p>
+              <p className="text-xs text-slate-400 mt-1">No credential groups yet. Use the <strong>+</strong> button to create one and bundle related credentials (e.g. a bank's cards and logins).</p>
             )}
           </div>
 
@@ -351,6 +341,16 @@ export default function CredentialFormPage() {
           </button>
         </div>
       </form>
+
+      {creating === 'folder' && (
+        <QuickCreateFolderModal parentOptions={allFolders.map(f => ({ value: f.id, label: f.name }))}
+          onClose={() => setCreating(null)}
+          onCreated={async f => { await loadMeta(); setFolderId(f.id); setCreating(null); }} />
+      )}
+      {creating === 'group' && (
+        <QuickCreateGroupModal onClose={() => setCreating(null)}
+          onCreated={async g => { await loadMeta(); setCredentialGroupId(g.id); setCreating(null); }} />
+      )}
 
       {showGenerator && (
         <PasswordGeneratorModal
@@ -388,14 +388,8 @@ function FormField({ field, value, allValues, onChange, hidden, onToggleHidden, 
       </label>
 
       {field.type === 'select' ? (
-        <div className="relative">
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <select name={field.key} value={value} onChange={e => onChange(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white appearance-none">
-            <option value="">Select…</option>
-            {field.options?.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
+        <Select name={field.key} ariaLabel={field.label} value={value} onChange={onChange}
+          options={[{ value: '', label: 'Select…' }, ...(field.options ?? []).map(o => ({ value: o, label: o }))]} />
       ) : field.type === 'textarea' ? (
         <textarea name={field.key} value={value} onChange={e => onChange(e.target.value)} rows={field.rows ?? 4}
           placeholder={field.placeholder}

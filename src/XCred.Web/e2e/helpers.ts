@@ -1,4 +1,4 @@
-import { Page, expect } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
 import type { FieldDef } from '../src/lib/vault';
 
 export const ADMIN_USERNAME = 'xcred_admin';
@@ -94,7 +94,20 @@ export function fieldLocator(page: Page, key: string) {
 }
 
 export function fieldInput(page: Page, key: string) {
-  return fieldLocator(page, key).locator('input, textarea, select');
+  return fieldLocator(page, key).locator('input, textarea, button[role="combobox"]');
+}
+
+/** Picks an option in the app's custom <Select> dropdown (the old native selectOption no longer
+ *  applies). `trigger` is the combobox button; the option is matched by exact visible label, or by
+ *  `{ value }` when labels are ambiguous. The list is portaled to <body>, hence page-level lookup. */
+export async function choose(page: Page, trigger: Locator, option: string | RegExp | { value: string }) {
+  await trigger.click();
+  const list = page.getByRole('listbox');
+  await expect(list).toBeVisible();
+  if (typeof option === 'string') await list.getByRole('option', { name: option, exact: true }).click();
+  else if (option instanceof RegExp) await list.getByRole('option', { name: option }).click();
+  else await list.locator(`[role="option"][data-value="${option.value}"]`).click();
+  await expect(list).toBeHidden();
 }
 
 export function sampleValueFor(field: FieldDef, seed: string): string {
@@ -133,7 +146,7 @@ export async function fillTypeFields(page: Page, fields: FieldDef[], seed: strin
     const value = sampleValueFor(field, seed);
     const input = fieldInput(page, field.key);
     if (field.type === 'select') {
-      await input.selectOption(value);
+      await choose(page, input, value);
     } else {
       await input.fill(value);
     }

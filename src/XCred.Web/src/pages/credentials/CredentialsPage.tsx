@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Plus, Search, Filter, RefreshCw, FolderOpen, ArrowLeft, X,
+  Plus, RefreshCw, FolderOpen, ArrowLeft, X,
   ChevronDown, ChevronRight, Boxes, Settings, Trash2, ShieldOff, AlertTriangle, FileSpreadsheet,
 } from 'lucide-react';
 import { DndContext, DragOverlay, pointerWithin, useDroppable } from '@dnd-kit/core';
@@ -15,12 +15,15 @@ import ViewModeToggle from '@/components/ViewModeToggle';
 import BulkActionBar from '@/components/BulkActionBar';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
+import SearchInput from '@/components/SearchInput';
+import Select from '@/components/Select';
 import { CREDENTIAL_TYPES } from '@/lib/vault';
 import { credentialTypeLabel, isExpired } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
 import { nameMatches, useCredentialSearch } from '@/lib/search';
 import toast from 'react-hot-toast';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface CredGroup { id: string; name: string; icon: string; credentialCount: number }
 interface FolderInfo { id: string; name: string }
@@ -151,13 +154,13 @@ export default function CredentialsPage() {
 
   const toggleExpand = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
   const toggleSelect = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const clearSelection = () => setSelectedIds(new Set());
@@ -206,8 +209,8 @@ export default function CredentialsPage() {
       await fetchGroups();
       setNewGroupName(''); setNewGroupIcon('🏦'); setShowCreateGroup(false);
       toast.success('Credential group created.');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to create credential group.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to create credential group.'));
     }
   };
 
@@ -313,20 +316,10 @@ export default function CredentialsPage() {
 
       {/* Search + type filter */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
-            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-            <option value="">All Types</option>
-            {ALL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
-          </select>
-        </div>
+        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[200px]"
+          placeholder="Search name, IP, user, notes, tags… (any words, any order)" />
+        <Select className="w-52" ariaLabel="Filter by type" value={filterType} onChange={setFilterType}
+          options={[{ value: '', label: 'All Types' }, ...ALL_TYPES.map(t => ({ value: t, label: credentialTypeLabel(t) }))]} />
         <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
           title="Show only credentials missing a password" />
@@ -369,6 +362,7 @@ export default function CredentialsPage() {
             onOpen={id => navigate(`/credentials/${id}`)}
             onDelete={handleDelete}
             onTagClick={tagId => setSearchParams({ tag: tagId })}
+            selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
           />
         )
       ) : visibleGroups.length === 0 && ungrouped.length === 0 ? (
@@ -432,7 +426,7 @@ export default function CredentialsPage() {
                             onDelete={e => handleDelete(cred.id, e)}
                             onTagClick={tagId => setSearchParams({ tag: tagId })}
                             indent draggable selectable
-                            selected={selectedIds.has(cred.id)}
+                            selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                             onToggleSelect={() => toggleSelect(cred.id)}
                           />
                         ))}
@@ -460,7 +454,7 @@ export default function CredentialsPage() {
                       onDelete={e => handleDelete(cred.id, e)}
                       onTagClick={tagId => setSearchParams({ tag: tagId })}
                       draggable selectable
-                      selected={selectedIds.has(cred.id)}
+                      selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                       onToggleSelect={() => toggleSelect(cred.id)}
                     />
                   ))}
@@ -495,7 +489,9 @@ function DroppableRow({ id, onClick, className, children }: {
   );
 }
 
-function flattenFolders(folders: Array<{ id: string; name: string; children?: any[] }>, prefix = ''): FolderInfo[] {
+interface FolderNode { id: string; name: string; children?: FolderNode[] }
+
+function flattenFolders(folders: Array<{ id: string; name: string; children?: FolderNode[] }>, prefix = ''): FolderInfo[] {
   const result: FolderInfo[] = [];
   for (const f of folders) {
     result.push({ id: f.id, name: prefix + f.name });

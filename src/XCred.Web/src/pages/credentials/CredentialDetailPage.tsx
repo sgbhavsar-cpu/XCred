@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Select from '@/components/Select';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Edit2, Trash2, Copy, Eye, EyeOff, Share2, ArrowLeft,
@@ -14,6 +15,7 @@ import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } f
 import { cn } from '@/lib/utils';
 import { computeFieldLink, openSmartLink, linkTooltip, listItemLinkResolver } from '@/lib/links';
 import { parseAccounts, readAccounts } from '@/lib/accounts';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface CredentialDetail {
   id: string; type: string; encryptedData: string; dataIv: string; encryptedCredentialKey: string;
@@ -151,8 +153,8 @@ export default function CredentialDetailPage() {
       toast.success(`Shared with ${recipient.username}.`);
       setShowShare(false);
       setShareWithId(''); setShareExpiry(''); setUntilChanged(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to share.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to share.'));
     } finally {
       setSharing(false);
     }
@@ -557,11 +559,8 @@ export default function CredentialDetailPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Share With</label>
-                <select value={shareWithId} onChange={e => setShareWithId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                  <option value="">Select a user…</option>
-                  {peers.map(p => <option key={p.id} value={p.id}>{p.username} ({p.email})</option>)}
-                </select>
+                <Select value={shareWithId} onChange={setShareWithId} ariaLabel="Share with" placeholder="Select a user…"
+                  options={peers.map(p => ({ value: p.id, label: p.username, hint: `(${p.email})` }))} />
                 {peers.length === 0 && (
                   <p className="text-xs text-slate-400 mt-1">No other users in the organisation.</p>
                 )}

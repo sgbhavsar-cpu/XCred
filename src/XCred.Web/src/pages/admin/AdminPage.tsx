@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import Select from '@/components/Select';
 import { UserCheck, UserX, Shield, Users, Activity, Settings, Save, Send, HardDrive, Download, Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api from '@/api/client';
 import toast from 'react-hot-toast';
 import { formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { apiErrorMessage, apiErrorCode } from '@/lib/apiError';
 
 interface AdminUser {
   id: string; username: string; email: string; role: string;
@@ -16,7 +18,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('users');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [pending, setPending] = useState<AdminUser[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
@@ -36,7 +38,7 @@ export default function AdminPage() {
     try {
       const res = await api.get('/admin/audit-log');
       setAuditLogs(res.data.data.items);
-    } catch {}
+    } catch { /* best effort — nothing useful to do on failure */ }
   };
 
   useEffect(() => { loadData(); }, []);
@@ -148,11 +150,8 @@ function UsersTab({ users, onDeactivate, onActivate, onSetRole }: {
                 <p className="text-xs text-slate-400">{u.email}</p>
               </td>
               <td className="px-5 py-3">
-                <select value={u.role} onChange={e => onSetRole(u.id, e.target.value)}
-                  className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white">
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
-                </select>
+                <Select size="sm" className="w-28" ariaLabel={`Role for ${u.username}`} value={u.role} onChange={v => onSetRole(u.id, v)}
+                  options={[{ value: 'User', label: 'User' }, { value: 'Admin', label: 'Admin' }]} />
               </td>
               <td className="px-5 py-3">
                 <span className={cn('text-xs font-medium px-2 py-1 rounded-full',
@@ -184,7 +183,12 @@ function UsersTab({ users, onDeactivate, onActivate, onSetRole }: {
   );
 }
 
-function AuditTab({ logs }: { logs: any[] }) {
+interface AuditLog {
+  id: string | number; timestamp: string; username?: string | null; action: string;
+  resourceType?: string | null; ipAddress?: string | null;
+}
+
+function AuditTab({ logs }: { logs: AuditLog[] }) {
   if (logs.length === 0) return <div className="text-center py-16 text-slate-400">No audit logs yet.</div>;
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -240,8 +244,8 @@ function OrgSettingsTab() {
     try {
       const res = await api.post('/admin/settings/test-email');
       toast.success(res.data.data);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to send test email.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to send test email.'));
     } finally { setTestingEmail(false); }
   };
 
@@ -291,11 +295,8 @@ function OrgSettingsTab() {
               <div key={f.key}>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{f.label}</label>
                 {f.type === 'select' ? (
-                  <select value={settings[f.key] ?? 'true'} onChange={e => update(f.key, e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                    <option value="true">Enabled</option>
-                    <option value="false">Disabled</option>
-                  </select>
+                  <Select ariaLabel={f.label} value={settings[f.key] ?? 'true'} onChange={v => update(f.key, v)}
+                    options={[{ value: 'true', label: 'Enabled' }, { value: 'false', label: 'Disabled' }]} />
                 ) : (
                   <input
                     type={f.type}
@@ -379,8 +380,8 @@ function SystemBackupTab() {
       const res = await doRestore(file, false);
       setResult({ summary: res.data.data, wiped: false });
       toast.success('System backup restored.');
-    } catch (err: any) {
-      if (err.response?.data?.error?.code === 'TARGET_NOT_EMPTY') {
+    } catch (err) {
+      if (apiErrorCode(err) === 'TARGET_NOT_EMPTY') {
         const confirmed = confirm(
           'This instance already has data. Restoring will PERMANENTLY WIPE every ' +
           'existing user, credential, and setting and replace it all with the backup\'s ' +
@@ -391,12 +392,12 @@ function SystemBackupTab() {
             const res2 = await doRestore(file, true);
             setResult({ summary: res2.data.data, wiped: true });
             toast.success('System backup restored — all previous data was replaced.');
-          } catch (err2: any) {
-            toast.error(err2.response?.data?.error?.message ?? 'Failed to restore system backup.');
+          } catch (err2) {
+            toast.error(apiErrorMessage(err2, 'Failed to restore system backup.'));
           }
         }
       } else {
-        toast.error(err.response?.data?.error?.message ?? 'Failed to restore system backup.');
+        toast.error(apiErrorMessage(err, 'Failed to restore system backup.'));
       }
     } finally {
       setRestoring(false);

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { registerAndLoginFreshUser, goToCredentials, goToNewCredentialForm, fillTypeFields, ADMIN_USERNAME, LOGIN_PASSWORD } from './helpers';
+import { choose, registerAndLoginFreshUser, goToCredentials, goToNewCredentialForm, fillTypeFields, ADMIN_USERNAME, LOGIN_PASSWORD } from './helpers';
 import { CREDENTIAL_FIELDS } from '../src/lib/vault';
 
 async function createNote(page: Page, name: string, notes: string) {
@@ -38,9 +38,9 @@ test.describe('Bulk actions: edit (notes, custom fields, expiry, tags), delete, 
     await page.getByRole('button', { name: 'Bulk Edit' }).click();
     const modal = page.getByTestId('bulk-edit-modal');
     await modal.getByRole('button', { name: tagName }).click(); // add tag
-    await modal.getByLabel('Expiry change').selectOption('set');
+    await choose(page, modal.getByRole('combobox', { name: 'Expiry change' }), 'Set to a date');
     await modal.getByLabel('Expiry date').fill('2031-05-17');
-    await modal.getByLabel('Notes change').selectOption('append');
+    await choose(page, modal.getByRole('combobox', { name: 'Notes change' }), 'Add to the end');
     await modal.locator('textarea').fill('Reviewed in bulk');
     await modal.getByRole('button', { name: 'Add change' }).click();
     await modal.getByLabel('Custom field label').fill('Owner');
@@ -99,7 +99,7 @@ test.describe('Bulk actions: edit (notes, custom fields, expiry, tags), delete, 
 
     await page.getByRole('button', { name: 'Share', exact: true }).click();
     const modal = page.getByTestId('bulk-share-modal');
-    await modal.getByRole('combobox').selectOption({ label: `${recipient} (${recipient}@example.com)` });
+    await choose(page, modal.getByRole('combobox'), new RegExp(`^${recipient} \\(`));
     await modal.getByRole('button', { name: 'Share', exact: true }).click();
     await expect(page.getByText(new RegExp(`Shared 2 credentials with ${recipient}`))).toBeVisible({ timeout: 15_000 });
 

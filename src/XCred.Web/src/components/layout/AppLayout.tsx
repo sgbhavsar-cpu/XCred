@@ -40,7 +40,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     try {
       await api.post('/auth/logout', { refreshToken });
-    } catch {}
+    } catch { /* best effort — nothing useful to do on failure */ }
     logout();
     toast.success('Logged out securely.');
     navigate('/login');

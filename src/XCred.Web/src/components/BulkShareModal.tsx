@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
+import Select from '@/components/Select';
 
 export interface ShareRecipient { id: string; username: string; email: string; publicKey: string }
 
@@ -46,11 +47,9 @@ export default function BulkShareModal({ count, onShare, onClose }: {
 
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Share with</label>
-          <select value={shareWithId} onChange={e => setShareWithId(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-            <option value="">{peers === null ? 'Loading…' : 'Select a user…'}</option>
-            {(peers ?? []).map(p => <option key={p.id} value={p.id}>{p.username} ({p.email})</option>)}
-          </select>
+          <Select value={shareWithId} onChange={setShareWithId} ariaLabel="Share with"
+            placeholder={peers === null ? 'Loading…' : 'Select a user…'}
+            options={(peers ?? []).map(p => ({ value: p.id, label: p.username, hint: `(${p.email})` }))} />
           {peers?.length === 0 && <p className="text-xs text-slate-400 mt-1">No other users in the organisation.</p>}
         </div>
 

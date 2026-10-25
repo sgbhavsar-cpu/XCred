@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Select from '@/components/Select';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, X, Trash2, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -19,6 +20,11 @@ interface GroupDetail {
 }
 
 interface CredentialListItem { id: string; type: string; credentialGroupId: string | null }
+
+interface GroupCandidate {
+  id: string; type: string; credentialGroupId: string | null;
+  encryptedData: string; dataIv: string; encryptedCredentialKey: string;
+}
 
 export default function CredentialGroupDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -71,7 +77,7 @@ export default function CredentialGroupDetailPage() {
 
       if (privateKey) {
         const map = new Map<string, string>();
-        await Promise.all(res.data.data.map(async (c: any) => {
+        await Promise.all(res.data.data.map(async (c: GroupCandidate) => {
           if (c.credentialGroupId === id) return;
           try {
             const fields = await decryptCredentialData(c.encryptedData, c.dataIv, c.encryptedCredentialKey, privateKey);
@@ -205,15 +211,13 @@ export default function CredentialGroupDetailPage() {
               </button>
             </div>
 
-            <select value={selectedCandidate} onChange={e => setSelectedCandidate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white mb-4">
-              <option value="">Select a credential…</option>
-              {candidates.map(c => (
-                <option key={c.id} value={c.id}>
-                  {credentialTypeIcon(c.type)} {candidateNames.get(c.id) ?? credentialTypeLabel(c.type)} ({credentialTypeLabel(c.type)})
-                </option>
-              ))}
-            </select>
+            <div className="mb-4">
+              <Select value={selectedCandidate} onChange={setSelectedCandidate} ariaLabel="Credential" placeholder="Select a credential…"
+                options={candidates.map(c => ({
+                  value: c.id, icon: credentialTypeIcon(c.type),
+                  label: candidateNames.get(c.id) ?? credentialTypeLabel(c.type), hint: `(${credentialTypeLabel(c.type)})`,
+                }))} />
+            </div>
             {candidates.length === 0 && <p className="text-xs text-slate-400 mb-4">All your credentials are already in this group, or you don't have any yet.</p>}
 
             <div className="flex gap-2">

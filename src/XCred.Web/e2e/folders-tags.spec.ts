@@ -22,7 +22,7 @@ test.describe('Folders and Tags — tree view with inline credential expansion',
 
     // Regression check: must land on the credential form, pre-selecting this folder — not a blank one
     await expect(page.getByRole('heading', { name: 'Add Credential' })).toBeVisible();
-    await expect(page.locator('[data-field="folderId"] select')).toHaveValue(/.+/);
+    await expect(page.locator('[data-field="folderId"] [role="combobox"]')).toHaveAttribute('data-value', /.+/);
 
     await page.locator('button[data-type="SecureNote"]').click();
     await page.locator('[data-field="name"] input').fill(credName);

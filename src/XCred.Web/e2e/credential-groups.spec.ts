@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, fillTypeFields, goToNewCredentialForm, goToCredentials } from './helpers';
+import { choose, login, fillTypeFields, goToNewCredentialForm, goToCredentials } from './helpers';
 import { CREDENTIAL_FIELDS } from '../src/lib/vault';
 
 test.describe('Credential Groups (shown inline on the Credentials page)', () => {
@@ -36,7 +36,7 @@ test.describe('Credential Groups (shown inline on the Credentials page)', () => 
       await page.locator('[data-field="name"] input').fill(member.name);
       await fillTypeFields(page, CREDENTIAL_FIELDS[member.type], `${seed}`);
 
-      await page.locator('[data-field="credentialGroupId"] select').selectOption(groupId);
+      await choose(page, page.locator('[data-field="credentialGroupId"] button[role="combobox"]'), { value: groupId });
       await page.getByRole('button', { name: 'Save Credential' }).click();
       await expect(page).toHaveURL(/\/credentials$/, { timeout: 10_000 });
     }

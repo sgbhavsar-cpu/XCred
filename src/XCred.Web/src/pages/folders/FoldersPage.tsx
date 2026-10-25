@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Filter, RefreshCw, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, RefreshCw, ChevronRight, ChevronDown, Edit2, Trash2, Check, X, Folder as FolderIcon, FolderOpen, GripVertical, CornerLeftUp, ShieldOff, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DndContext, DragOverlay, MeasuringStrategy, pointerWithin, useDraggable, useDroppable } from '@dnd-kit/core';
@@ -16,8 +16,12 @@ import CredentialRow from '@/components/CredentialRow';
 import CredentialGridView from '@/components/CredentialGridView';
 import ViewModeToggle from '@/components/ViewModeToggle';
 import BulkActionBar from '@/components/BulkActionBar';
+import { QuickCreateFolderModal } from '@/components/QuickCreateModals';
 import SelectAllButton from '@/components/SelectAllButton';
 import ToolbarIconButton from '@/components/ToolbarIconButton';
+import SearchInput from '@/components/SearchInput';
+import Select from '@/components/Select';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface FolderItem {
   id: string;
@@ -40,6 +44,7 @@ export default function FoldersPage() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState('');
+  const [quickParent, setQuickParent] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -64,7 +69,7 @@ export default function FoldersPage() {
       await loadFolders();
       setNewName(''); setNewParentId(''); setCreating(false);
       toast.success('Folder created.');
-    } catch (err: any) { toast.error(err.response?.data?.error?.message ?? 'Failed to create.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to create.')); }
   };
 
   const updateFolder = async (id: string) => {
@@ -98,8 +103,8 @@ export default function FoldersPage() {
       await api.put(`/folders/${id}`, { name: current.name, parentFolderId: newParentId, sortOrder: current.sortOrder });
       await loadFolders();
       toast.success(newParentId ? 'Folder moved.' : 'Moved to top level.');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to move folder.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to move folder.'));
     }
   };
 
@@ -114,13 +119,13 @@ export default function FoldersPage() {
 
   const toggleExpand = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
   const toggleSelect = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const clearSelection = () => setSelectedIds(new Set());
@@ -228,20 +233,10 @@ export default function FoldersPage() {
 
       {/* Search + type filter */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search name, IP, user, notes, tags… (any words, any order)"
-            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="pl-9 pr-8 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-            <option value="">All Types</option>
-            {CREDENTIAL_TYPES.map(t => <option key={t} value={t}>{credentialTypeLabel(t)}</option>)}
-          </select>
-        </div>
+        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[200px]"
+          placeholder="Search name, IP, user, notes, tags… (any words, any order)" />
+        <Select className="w-52" ariaLabel="Filter by type" value={filterType} onChange={setFilterType}
+          options={[{ value: '', label: 'All Types' }, ...CREDENTIAL_TYPES.map(t => ({ value: t, label: credentialTypeLabel(t) }))]} />
         <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         <button onClick={refreshAll} title="Refresh" className="p-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
           <RefreshCw className="w-4 h-4 text-slate-500" />
@@ -256,11 +251,9 @@ export default function FoldersPage() {
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <div>
             <label className="block text-xs text-slate-500 mb-1">Parent Folder (optional)</label>
-            <select value={newParentId} onChange={e => setNewParentId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-              <option value="">None (top-level)</option>
-              {flatFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
+            <Select value={newParentId} onChange={setNewParentId} ariaLabel="Parent folder"
+              options={[{ value: '', label: 'None (top-level)' }, ...flatFolders.map(f => ({ value: f.id, label: f.name }))]}
+              onCreate={() => setQuickParent(true)} createTitle="Create a new folder" />
           </div>
           <div className="flex gap-2">
             <button onClick={() => { setCreating(false); setNewName(''); setNewParentId(''); }}
@@ -269,6 +262,12 @@ export default function FoldersPage() {
               className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Create</button>
           </div>
         </div>
+      )}
+
+      {quickParent && (
+        <QuickCreateFolderModal parentOptions={flatFolders.map(f => ({ value: f.id, label: f.name }))}
+          onClose={() => setQuickParent(false)}
+          onCreated={async f => { await loadFolders(); setNewParentId(f.id); setQuickParent(false); }} />
       )}
 
       <div className="flex flex-wrap gap-3 mb-4">
@@ -297,6 +296,7 @@ export default function FoldersPage() {
             onOpen={id => navigate(`/credentials/${id}`)}
             onDelete={handleDeleteCredential}
             onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
+            selectedIds={selectedIds} onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
           />
         )
       ) : nothingAtAll ? (
@@ -371,7 +371,7 @@ export default function FoldersPage() {
                         onDelete={e => handleDeleteCredential(cred.id, e)}
                         onTagClick={tagId => navigate(`/credentials?tag=${tagId}`)}
                         draggable selectable
-                        selected={selectedIds.has(cred.id)}
+                        selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                         onToggleSelect={() => toggleSelect(cred.id)}
                       />
                     ))}
@@ -514,7 +514,7 @@ function FolderTree({
                       onDelete={e => onDeleteCredential(cred.id, e)}
                       onTagClick={onTagClick}
                       indent draggable selectable
-                      selected={selectedIds.has(cred.id)}
+                      selected={selectedIds.has(cred.id)} selectionActive={selectedIds.size > 0}
                       onToggleSelect={() => onToggleSelect(cred.id)}
                     />
                   ))}

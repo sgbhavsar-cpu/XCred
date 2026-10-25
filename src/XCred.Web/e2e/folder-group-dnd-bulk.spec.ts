@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { registerAndLoginFreshUser, dragCredentialOnto, goToNewCredentialForm, fillTypeFields } from './helpers';
+import { choose, registerAndLoginFreshUser, dragCredentialOnto, goToNewCredentialForm, fillTypeFields } from './helpers';
 import { CREDENTIAL_FIELDS } from '../src/lib/vault';
 
 async function createSecureNote(page: import('@playwright/test').Page, name: string, seed: string) {
@@ -103,8 +103,8 @@ test.describe('Folder/group drag-and-drop and multi-select bulk edit', () => {
     await page.getByRole('button', { name: 'Bulk Edit' }).click();
     await expect(page.getByText('Bulk edit 2 credentials')).toBeVisible();
     const modalSelects = page.getByTestId('bulk-edit-modal').getByRole('combobox');
-    await modalSelects.nth(0).selectOption({ label: folderName }); // Folder selector
-    await modalSelects.nth(1).selectOption({ label: groupName }); // Credential Group selector
+    await choose(page, modalSelects.nth(0), folderName); // Folder selector
+    await choose(page, modalSelects.nth(1), groupName); // Credential Group selector
     await page.getByRole('button', { name: 'Apply' }).click();
     await expect(page.getByText('Updated 2 credentials.')).toBeVisible({ timeout: 10_000 });
 

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X, Plus, Minus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Select from '@/components/Select';
+import { QuickCreateFolderModal, QuickCreateGroupModal } from '@/components/QuickCreateModals';
 import { hasAnyChange } from '@/lib/bulk';
 import type { BulkEditChanges, CustomFieldOp, CustomFieldType, ExpiryChange, NotesMode } from '@/lib/bulk';
 
@@ -20,7 +22,7 @@ const input = 'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus
  *  is "leave alone" by default, so only what the user explicitly touches is applied to the
  *  selection. Folder/group/expiry/tags are server-side metadata; notes and custom fields live in the
  *  encrypted blob and are edited in the browser (see useDecryptedCredentials.bulkEdit). */
-export default function BulkEditModal({ count, folders, groups, tags, onApply, onClose }: {
+export default function BulkEditModal({ count, folders: initialFolders, groups: initialGroups, tags, onApply, onClose }: {
   count: number;
   folders: Option[];
   groups: Option[];
@@ -28,6 +30,10 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
   onApply: (changes: BulkEditChanges) => Promise<void>;
   onClose: () => void;
 }) {
+  // Local copies so folders/groups made via the "+" buttons show up (and get selected) immediately.
+  const [folders, setFolders] = useState(initialFolders);
+  const [groups, setGroups] = useState(initialGroups);
+  const [creating, setCreating] = useState<null | 'folder' | 'group'>(null);
   const [folderChoice, setFolderChoice] = useState(NO_CHANGE);
   const [groupChoice, setGroupChoice] = useState(NO_CHANGE);
   const [tagStates, setTagStates] = useState<Map<string, TagState>>(new Map());
@@ -108,20 +114,18 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
 
         <div>
           <label className={label}>Folder</label>
-          <select value={folderChoice} onChange={e => setFolderChoice(e.target.value)} className={input}>
-            <option value={NO_CHANGE}>Don't change</option>
-            <option value={UNASSIGN}>No folder (remove)</option>
-            {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
+          <Select value={folderChoice} onChange={setFolderChoice} ariaLabel="Folder"
+            options={[{ value: NO_CHANGE, label: "Don't change" }, { value: UNASSIGN, label: 'No folder (remove)' },
+              ...folders.map(f => ({ value: f.id, label: f.name }))]}
+            onCreate={() => setCreating('folder')} createTitle="Create a new folder" />
         </div>
 
         <div>
           <label className={label}>Credential Group</label>
-          <select value={groupChoice} onChange={e => setGroupChoice(e.target.value)} className={input}>
-            <option value={NO_CHANGE}>Don't change</option>
-            <option value={UNASSIGN}>No group (remove)</option>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
+          <Select value={groupChoice} onChange={setGroupChoice} ariaLabel="Credential Group"
+            options={[{ value: NO_CHANGE, label: "Don't change" }, { value: UNASSIGN, label: 'No group (remove)' },
+              ...groups.map(g => ({ value: g.id, label: g.name }))]}
+            onCreate={() => setCreating('group')} createTitle="Create a new credential group" />
         </div>
 
         <div className={section} data-testid="bulk-tag-edit-modal">
@@ -157,12 +161,9 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
         <div className={section}>
           <label className={label}>Expiry date</label>
           <div className="flex gap-2">
-            <select value={expiryMode} onChange={e => setExpiryMode(e.target.value as ExpiryMode)} className={input} aria-label="Expiry change">
-              <option value="none">Don't change</option>
-              <option value="set">Set to a date</option>
-              <option value="extend">Extend by N days</option>
-              <option value="clear">Remove expiry</option>
-            </select>
+            <Select value={expiryMode} onChange={v => setExpiryMode(v as ExpiryMode)} ariaLabel="Expiry change"
+              options={[{ value: 'none', label: "Don't change" }, { value: 'set', label: 'Set to a date' },
+                { value: 'extend', label: 'Extend by N days' }, { value: 'clear', label: 'Remove expiry' }]} />
             {expiryMode === 'set' && (
               <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className={input} aria-label="Expiry date" />
             )}
@@ -179,13 +180,9 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
 
         <div className={section}>
           <label className={label}>Notes</label>
-          <select value={notesChoice} onChange={e => setNotesChoice(e.target.value as NotesChoice)} className={input} aria-label="Notes change">
-            <option value="none">Don't change</option>
-            <option value="replace">Replace notes</option>
-            <option value="append">Add to the end</option>
-            <option value="prepend">Add to the start</option>
-            <option value="clear">Clear notes</option>
-          </select>
+          <Select value={notesChoice} onChange={v => setNotesChoice(v as NotesChoice)} ariaLabel="Notes change"
+            options={[{ value: 'none', label: "Don't change" }, { value: 'replace', label: 'Replace notes' },
+              { value: 'append', label: 'Add to the end' }, { value: 'prepend', label: 'Add to the start' }, { value: 'clear', label: 'Clear notes' }]} />
           {(notesChoice === 'replace' || notesChoice === 'append' || notesChoice === 'prepend') && (
             <textarea value={notesText} onChange={e => setNotesText(e.target.value)} rows={3} placeholder="Note text…"
               className={cn(input, 'mt-2 resize-none')} />
@@ -204,22 +201,15 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
           <div className="space-y-2">
             {rows.map((r, i) => (
               <div key={i} className="flex gap-2 items-start" data-custom-field-row>
-                <select value={r.action} onChange={e => patchRow(i, { action: e.target.value as 'set' | 'remove' })}
-                  className={cn(input, 'w-32 shrink-0')} aria-label="Custom field action">
-                  <option value="set">Add / update</option>
-                  <option value="remove">Remove</option>
-                </select>
+                <Select className="w-36 shrink-0" value={r.action} onChange={v => patchRow(i, { action: v as 'set' | 'remove' })}
+                  ariaLabel="Custom field action" options={[{ value: 'set', label: 'Add / update' }, { value: 'remove', label: 'Remove' }]} />
                 <input value={r.label} onChange={e => patchRow(i, { label: e.target.value })} placeholder="Label" className={input} aria-label="Custom field label" />
                 {r.action === 'set' && (
                   <>
                     <input value={r.value} onChange={e => patchRow(i, { value: e.target.value })} placeholder="Value" className={input} aria-label="Custom field value"
                       type={r.fieldType === 'password' ? 'password' : 'text'} />
-                    <select value={r.fieldType} onChange={e => patchRow(i, { fieldType: e.target.value as CustomFieldType })}
-                      className={cn(input, 'w-24 shrink-0')} aria-label="Custom field type">
-                      <option value="text">Text</option>
-                      <option value="password">Hidden</option>
-                      <option value="url">URL</option>
-                    </select>
+                    <Select className="w-28 shrink-0" value={r.fieldType} onChange={v => patchRow(i, { fieldType: v as CustomFieldType })}
+                      ariaLabel="Custom field type" options={[{ value: 'text', label: 'Text' }, { value: 'password', label: 'Hidden' }, { value: 'url', label: 'URL' }]} />
                   </>
                 )}
                 <button type="button" onClick={() => setRows(prev => prev.filter((_, j) => j !== i))}
@@ -240,6 +230,20 @@ export default function BulkEditModal({ count, folders, groups, tags, onApply, o
           </button>
         </div>
       </div>
+
+      {creating === 'folder' && (
+        <QuickCreateFolderModal parentOptions={folders.map(f => ({ value: f.id, label: f.name }))}
+          onClose={() => setCreating(null)}
+          onCreated={f => {
+            const parent = folders.find(p => p.id === f.parentFolderId);
+            setFolders(prev => [...prev, { id: f.id, name: parent ? `${parent.name} / ${f.name}` : f.name }]);
+            setFolderChoice(f.id); setCreating(null);
+          }} />
+      )}
+      {creating === 'group' && (
+        <QuickCreateGroupModal onClose={() => setCreating(null)}
+          onCreated={g => { setGroups(prev => [...prev, { id: g.id, name: g.name }]); setGroupChoice(g.id); setCreating(null); }} />
+      )}
     </div>
   );
 }

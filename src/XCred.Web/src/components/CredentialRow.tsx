@@ -14,7 +14,7 @@ import type { CredentialListItem, DecryptedCredentialMeta } from '@/hooks/useDec
  *  password-type field — nothing to copy for types that don't. */
 export default function CredentialRow({
   cred, decrypted, onOpen, onEdit, onDuplicate, onCopyPassword, onDelete, onTagClick,
-  indent, draggable, selectable, selected, onToggleSelect,
+  indent, draggable, selectable, selected, selectionActive, onToggleSelect,
 }: {
   cred: CredentialListItem;
   decrypted?: DecryptedCredentialMeta;
@@ -28,6 +28,9 @@ export default function CredentialRow({
   draggable?: boolean;
   selectable?: boolean;
   selected?: boolean;
+  /** True while ANY credential on the page is selected: a click on the row then toggles its
+   *  selection instead of opening it, so a stray click mid-selection can't navigate away. */
+  selectionActive?: boolean;
   onToggleSelect?: () => void;
 }) {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
@@ -38,10 +41,12 @@ export default function CredentialRow({
   });
 
   return (
-    <div ref={setNodeRef} onClick={onOpen} data-testid="credential-row"
+    <div ref={setNodeRef} data-testid="credential-row" data-selected={selected ? 'true' : undefined}
+      onClick={selectable && selectionActive ? () => onToggleSelect?.() : onOpen}
       style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 } : undefined}
-      className={cn('flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 cursor-pointer transition-colors relative',
-        indent && 'pl-14 bg-slate-50/30', isDragging && 'opacity-40')}>
+      className={cn('flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-colors relative',
+        selected ? 'bg-indigo-100/70 hover:bg-indigo-100 shadow-[inset_3px_0_0_0_var(--color-indigo-500)]' : cn('hover:bg-slate-50', indent && 'bg-slate-50/30'),
+        indent && 'pl-14', isDragging && 'opacity-40')}>
       {draggable && (
         <button type="button" {...attributes} {...listeners}
           onClick={e => e.stopPropagation()}

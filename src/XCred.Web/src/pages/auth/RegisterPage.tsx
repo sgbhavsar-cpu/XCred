@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { deriveKey, generateSalt, generateKeyPair, encryptPrivateKey } from '@/lib/crypto';
 import { passwordStrength } from '@/lib/crypto';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const schema = z.object({
   username: z.string().min(3, 'Minimum 3 characters').max(100),
@@ -60,8 +61,8 @@ export default function RegisterPage() {
 
       toast.success('Account created! Awaiting admin approval before you can log in.');
       navigate('/login');
-    } catch (err: any) {
-      const msg = err.response?.data?.error?.message ?? 'Registration failed. Check that the API server is running.';
+    } catch (err) {
+      const msg = apiErrorMessage(err, 'Registration failed. Check that the API server is running.');
       toast.error(msg);
     } finally {
       setLoading(false);

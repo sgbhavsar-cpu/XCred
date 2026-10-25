@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     try {
       if (refreshToken) await api.post('/auth/logout', { refreshToken });
-    } catch {}
+    } catch { /* best effort — nothing useful to do on failure */ }
     logout();
     toast.success('Logged out securely.');
     navigate('/login');

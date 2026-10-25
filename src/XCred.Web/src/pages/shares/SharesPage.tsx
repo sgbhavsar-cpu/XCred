@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Share2, ShieldOff, Clock, User, Users, CheckCircle2, XCircle } from 'lucide-react';
+import { Share2, ShieldOff, Clock, User, Users, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { decryptCredentialData } from '@/lib/vault';
 import { credentialTypeLabel, credentialTypeIcon, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface SharedCredential {
   id: string;
@@ -72,8 +73,8 @@ export default function SharesPage() {
       await api.delete(`/shares/${shareId}`);
       setByMe(prev => prev.filter(s => s.id !== shareId));
       toast.success('Share revoked.');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to revoke.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to revoke.'));
     }
   };
 

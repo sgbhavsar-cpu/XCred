@@ -8,13 +8,16 @@ import type { ShareRecipient } from './BulkShareModal';
 import { buildCredentialsCsv, downloadCsv } from '@/lib/csv';
 import type { BulkEditChanges } from '@/lib/bulk';
 import type { CredentialListItem, DecryptedCredentialMeta, useDecryptedCredentials } from '@/hooks/useDecryptedCredentials';
+import { apiErrorMessage } from '@/lib/apiError';
 
 type Bulk = ReturnType<typeof useDecryptedCredentials>;
 
 interface Option { id: string; name: string }
 interface TagOption { id: string; name: string; color: string }
 
-function flattenFolders(nodes: Array<{ id: string; name: string; children?: any[] }>, prefix = ''): Option[] {
+interface FolderNode { id: string; name: string; children?: FolderNode[] }
+
+function flattenFolders(nodes: Array<{ id: string; name: string; children?: FolderNode[] }>, prefix = ''): Option[] {
   return nodes.flatMap(f => [{ id: f.id, name: prefix + f.name }, ...(f.children?.length ? flattenFolders(f.children, `${prefix}${f.name} / `) : [])]);
 }
 
@@ -53,8 +56,8 @@ export default function BulkActionBar({ selectedIds, credentials, decrypted, bul
       toast.success(`Updated ${plural(r.updated)}.`);
       onClear();
       setEditing(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Bulk edit failed.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Bulk edit failed.'));
     }
   };
 
@@ -70,8 +73,8 @@ export default function BulkActionBar({ selectedIds, credentials, decrypted, bul
       const r = await bulk.bulkDelete(ids);
       toast.success(`Deleted ${plural(r.updated)}.`);
       onClear();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Bulk delete failed.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Bulk delete failed.'));
     }
   };
 
@@ -81,8 +84,8 @@ export default function BulkActionBar({ selectedIds, credentials, decrypted, bul
       if (r.shared > 0) toast.success(`Shared ${plural(r.shared)} with ${recipient.username}.`);
       if (r.failed.length > 0) toast.error(`${plural(r.failed.length)} could not be shared.`);
       if (r.failed.length === 0) { onClear(); setSharing(false); }
-    } catch (err: any) {
-      toast.error(err.message ?? 'Bulk share failed.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Bulk share failed.');
     }
   };
 

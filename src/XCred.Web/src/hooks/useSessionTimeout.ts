@@ -15,7 +15,7 @@ export function useSessionTimeout() {
 
     timerRef.current = setTimeout(async () => {
       if (refreshToken) {
-        try { await api.post('/auth/logout', { refreshToken }); } catch {}
+        try { await api.post('/auth/logout', { refreshToken }); } catch { /* best effort — nothing useful to do on failure */ }
       }
       logout();
       navigate('/login?reason=session_expired');

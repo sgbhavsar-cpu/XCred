@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Save, Eye, EyeOff, AlertTriangle, Shield, Bell, User, Download, Upload, CheckCircle2, FileSpreadsheet, FileJson } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/api/client';
@@ -9,12 +8,13 @@ import { encryptCredentialData } from '@/lib/vault';
 import { formatDateTime } from '@/lib/utils';
 import { parseCsv } from '@/lib/csv';
 import RestoreAccountKeysModal from './components/RestoreAccountKeysModal';
+import type { BackupWithKeys } from './components/RestoreAccountKeysModal';
 import ImportCsvModal from './components/ImportCsvModal';
+import { apiErrorMessage } from '@/lib/apiError';
 
 type Tab = 'profile' | 'security' | 'notifications' | 'backup' | 'import' | 'master-key';
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
   const { user, privateKey, setPublicKey, setCryptoKeys } = useAuthStore();
   const [tab, setTab] = useState<Tab>('profile');
 
@@ -53,7 +53,6 @@ export default function SettingsPage() {
           privateKey={privateKey}
           setPublicKey={setPublicKey}
           setCryptoKeys={setCryptoKeys}
-          navigate={navigate}
         />
       )}
     </div>
@@ -61,8 +60,12 @@ export default function SettingsPage() {
 }
 
 /* ─── Profile ─────────────────────────────────────────────────────────── */
-function ProfileTab({ user }: { user: any }) {
-  const [profile, setProfile] = useState<any>(null);
+interface Profile {
+  username?: string; email?: string; role?: string; createdAt?: string; lastLoginAt?: string | null;
+}
+
+function ProfileTab({ user }: { user: ReturnType<typeof useAuthStore.getState>['user'] }) {
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     api.get('/auth/profile').then(res => setProfile(res.data.data)).catch(() => {});
@@ -112,8 +115,8 @@ function ChangePasswordTab() {
       await api.post('/auth/change-password', { currentPassword: current, newPassword: newPwd });
       toast.success('Login password changed.');
       setCurrent(''); setNewPwd(''); setConfirm('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to change password.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to change password.'));
     } finally { setSaving(false); }
   };
 
@@ -156,7 +159,7 @@ function NotificationsTab() {
       try {
         const p = JSON.parse(res.data.data.notificationPreferences ?? '{}');
         setPrefs(prev => ({ ...prev, ...p }));
-      } catch {}
+      } catch { /* best effort — nothing useful to do on failure */ }
       setLoaded(true);
     }).catch(() => setLoaded(true));
   }, []);
@@ -226,6 +229,14 @@ function NotificationsTab() {
 }
 
 /* ─── Backup & Restore ────────────────────────────────────────────────── */
+/** The list-endpoint fields the Settings tools (plain export, master-key change) read. */
+interface ApiCredential {
+  id: string; type: string; encryptedData: string; dataIv: string; encryptedCredentialKey: string;
+  folderName?: string | null; credentialGroupName?: string | null; tags?: Array<{ name: string }>;
+  expiryDate?: string | null; createdAt: string; updatedAt: string;
+  attachments?: Array<{ encryptedFileName: string; fileNameIv: string; fileSizeBytes: number; uploadedAt: string }>;
+}
+
 interface RestoreResult {
   credentialsRestored: number;
   credentialsSkipped: number;
@@ -244,7 +255,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
-  const [pendingBackup, setPendingBackup] = useState<any | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<BackupWithKeys | null>(null);
   const [plainExporting, setPlainExporting] = useState(false);
 
   const handleExport = async () => {
@@ -264,7 +275,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
 
   // Shared by both restore paths: a plain restore (this backup's own account keys either
   // absent, or already matching this account) just replays credentials/folders/tags as before.
-  const restoreCredentials = async (backup: any, extra: Partial<RestoreResult> = {}) => {
+  const restoreCredentials = async (backup: Record<string, unknown>, extra: Partial<RestoreResult> = {}) => {
     const res = await api.post('/backup/restore', backup);
     setRestoreResult({ ...res.data.data, ...extra });
     toast.success('Backup restored successfully.');
@@ -290,8 +301,8 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
 
       setRestoring(true);
       await restoreCredentials(backup);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to restore backup. File may be invalid.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to restore backup. File may be invalid.'));
     } finally {
       setRestoring(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -300,14 +311,15 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
 
   const handleAccountKeysVerified = async (symmetricKey: CryptoKey, backupPrivateKey: CryptoKey, reWrappedCount: number) => {
     const backup = pendingBackup;
+    if (!backup) return;
     setPendingBackup(null);
     setRestoring(true);
     try {
       await restoreCredentials(backup, { accountKeysRestored: true, credentialsReWrapped: reWrappedCount });
       setPublicKey(backup.publicKey);
       setCryptoKeys(symmetricKey, backupPrivateKey);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Account keys were restored, but importing the backup\'s credentials failed. Try restoring the same file again.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Account keys were restored, but importing the backup\'s credentials failed. Try restoring the same file again.'));
     } finally {
       setRestoring(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -325,7 +337,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
     setPlainExporting(true);
     try {
       const res = await api.get('/credentials');
-      const items: any[] = res.data.data;
+      const items: ApiCredential[] = res.data.data;
 
       let failed = 0;
       const decrypted = await Promise.all(items.map(async (item) => {
@@ -337,7 +349,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
             try { fields.customFields = JSON.parse(fields.customFields); } catch { /* leave as-is */ }
           }
 
-          const attachments = await Promise.all((item.attachments ?? []).map(async (att: any) => {
+          const attachments = await Promise.all((item.attachments ?? []).map(async (att) => {
             const name = await decrypt(credentialKey, att.encryptedFileName, att.fileNameIv).catch(() => 'Encrypted file');
             return { fileName: name, fileSizeBytes: att.fileSizeBytes, uploadedAt: att.uploadedAt };
           }));
@@ -347,7 +359,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
             type: item.type,
             folder: item.folderName ?? null,
             credentialGroup: item.credentialGroupName ?? null,
-            tags: (item.tags ?? []).map((t: any) => t.name),
+            tags: (item.tags ?? []).map(t => t.name),
             expiryDate: item.expiryDate,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
@@ -535,7 +547,7 @@ function ImportTab() {
     if (jsonInputRef.current) jsonInputRef.current.value = '';
     if (!publicKey) { toast.error('Public key not found. Please log out and log back in.'); return; }
 
-    let entries: any[];
+    let entries: Array<Record<string, unknown>>;
     try {
       const parsed = JSON.parse(await file.text());
       if (!Array.isArray(parsed.credentials)) throw new Error('not our format');
@@ -647,11 +659,10 @@ function ImportTab() {
 }
 
 /* ─── Change Master Password ──────────────────────────────────────────── */
-function ChangeMasterKeyTab({ privateKey, setPublicKey, setCryptoKeys, navigate }: {
+function ChangeMasterKeyTab({ privateKey, setPublicKey, setCryptoKeys }: {
   privateKey: CryptoKey | null;
   setPublicKey: (k: string) => void;
   setCryptoKeys: (sym: CryptoKey, priv: CryptoKey) => void;
-  navigate: ReturnType<typeof useNavigate>;
 }) {
   const [newMaster, setNewMaster] = useState('');
   const [confirmMaster, setConfirmMaster] = useState('');
@@ -679,7 +690,7 @@ function ChangeMasterKeyTab({ privateKey, setPublicKey, setCryptoKeys, navigate 
 
       setStep(`Re-encrypting ${credentials.length} credential${credentials.length !== 1 ? 's' : ''}…`);
       const reEncrypted = await Promise.all(
-        credentials.map(async (cred: any) => {
+        credentials.map(async (cred: ApiCredential) => {
           try {
             const credKey = await decryptKeyWithPrivateKey(privateKey, cred.encryptedCredentialKey);
             const newEncKey = await encryptKeyWithPublicKey(newPubKey, credKey);
@@ -705,8 +716,8 @@ function ChangeMasterKeyTab({ privateKey, setPublicKey, setCryptoKeys, navigate 
 
       toast.success('Master password changed. All credentials re-encrypted.');
       setNewMaster(''); setConfirmMaster('');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message ?? 'Failed to change master password.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to change master password.'));
     } finally { setSaving(false); setStep(''); }
   };
 
