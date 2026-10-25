@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
@@ -97,6 +98,26 @@ using (var scope = app.Services.CreateScope())
 // migration failure when it silently crashes the site on the first request.
 if (args.Contains("--migrate-only"))
     return;
+
+// Behind a reverse proxy (e.g. nginx in front of the Docker deployment) the TCP peer is the proxy, so
+// HttpContext.Connection.RemoteIpAddress — which the audit log and failed-login alert emails record —
+// would always be the proxy. When ForwardedHeaders:TrustedNetworks (comma-separated CIDRs) is set, the
+// proxy's X-Forwarded-For / X-Forwarded-Proto are honoured, but ONLY from those networks. Off by
+// default, so the portable/IIS editions can't have their audit IPs spoofed by a client-sent header.
+var trustedNetworks = builder.Configuration["ForwardedHeaders:TrustedNetworks"];
+if (!string.IsNullOrWhiteSpace(trustedNetworks))
+{
+    var forwarded = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        ForwardLimit = 1,
+    };
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+    foreach (var cidr in trustedNetworks.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        forwarded.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
+    app.UseForwardedHeaders(forwarded);
+}
 
 app.UseMiddleware<ExceptionMiddleware>();
 

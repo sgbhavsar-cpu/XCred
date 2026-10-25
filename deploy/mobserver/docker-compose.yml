@@ -25,6 +25,9 @@ services:
       ConnectionStrings__DefaultConnection: Data Source=/app/data/xcred.db
       DisableHttpsRedirection: "true"      # TLS is terminated by nginx
       AllowedOrigins: https://mobserver.ssm-infotech.com:1976
+      # Trust X-Forwarded-For/-Proto from nginx (a container on this Docker network) so audit logs record
+      # the client address nginx reports, not nginx itself.
+      ForwardedHeaders__TrustedNetworks: 172.16.0.0/12
       # Jwt__Secret is generated on first boot and persisted in /app/data/jwt-secret.txt
     volumes:
       - xcred_data:/app/data

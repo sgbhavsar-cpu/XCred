@@ -15,3 +15,4 @@ publish-portable
 *.zip
 *.apk
 deploy
+src/XCred.Api/wwwroot
