@@ -37,12 +37,14 @@ class CredentialGroupRepository {
     );
   }
 
-  Future<void> create({required String name, required String icon}) {
-    return _api.post<Map<String, dynamic>>(
+  /// Returns the new group's id so a caller (the "+" next to a Group picker) can select it.
+  Future<String> create({required String name, required String icon}) async {
+    final created = await _api.post<Map<String, dynamic>>(
       '/api/credential-groups',
       (json) => json as Map<String, dynamic>,
       data: {'name': name, 'icon': icon},
     );
+    return created['id'] as String;
   }
 
   Future<void> rename(String id, {required String name, required String icon}) {

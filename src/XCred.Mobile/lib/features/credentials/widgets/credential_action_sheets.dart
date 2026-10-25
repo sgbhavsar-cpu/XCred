@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/credential_models.dart';
 import '../../../core/models/folder_tag_models.dart';
+import '../../../core/widgets/option_picker.dart';
 
 /// Actions offered from a credential row's "⋮" menu — mirrors the web app's row buttons
 /// (View/Edit/Duplicate/Copy Password/Delete) plus a mobile-appropriate "Move to..."
@@ -85,43 +86,46 @@ Future<bool> confirmDeleteCredential(BuildContext context) async {
 /// look like a bare `null` return.
 typedef PickResult = (bool picked, String? id);
 
-/// Lists "No Folder" + the flattened folder tree; returns the chosen folder id (or null
-/// for "No Folder"). The current assignment is check-marked.
+/// "No Folder" + the flattened folder tree, as options for [showOptionPicker] / [PickerField].
+List<PickOption<String?>> folderPickOptions(List<FolderNode> tree) => [
+      const PickOption<String?>(
+          value: null, label: 'No Folder', leading: Icon(Icons.folder_off_outlined)),
+      for (final f in flattenFolders(tree))
+        PickOption<String?>(
+            value: f.id,
+            label: f.indentedName,
+            leading: const Icon(Icons.folder_outlined, color: Colors.amber)),
+    ];
+
+/// "No Credential Group" + the user's groups, as options for [showOptionPicker] / [PickerField].
+List<PickOption<String?>> groupPickOptions(List<CredentialGroupSummary> groups) => [
+      const PickOption<String?>(
+          value: null, label: 'No Credential Group', leading: Icon(Icons.workspaces_outline)),
+      for (final g in groups)
+        PickOption<String?>(
+            value: g.id,
+            label: g.name,
+            leading: Text(g.icon, style: const TextStyle(fontSize: 18))),
+    ];
+
+/// Lists "No Folder" + the flattened folder tree (searchable past 5 entries, scrolling past 6);
+/// returns the chosen folder id (or null for "No Folder"). The current assignment is check-marked.
+/// [onCreate] adds a "+ New" action that makes a folder in place and picks it.
 Future<PickResult> showFolderPickerSheet(
   BuildContext context, {
   required List<FolderNode> tree,
   required String? currentFolderId,
+  Future<String?> Function()? onCreate,
 }) async {
-  final flat = flattenFolders(tree);
-  final result = await showModalBottomSheet<PickResult>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Move to Folder', style: TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.folder_off_outlined),
-            title: const Text('No Folder'),
-            trailing: currentFolderId == null ? const Icon(Icons.check) : null,
-            onTap: () => Navigator.of(context).pop((true, null)),
-          ),
-          for (final f in flat)
-            ListTile(
-              leading: const Icon(Icons.folder_outlined, color: Colors.amber),
-              title: Text(f.indentedName),
-              trailing: currentFolderId == f.id ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.of(context).pop((true, f.id)),
-            ),
-        ],
-      ),
-    ),
+  final result = await showOptionPicker<String?>(
+    context,
+    title: 'Move to Folder',
+    options: folderPickOptions(tree),
+    selected: currentFolderId,
+    onCreate: onCreate,
+    createLabel: 'New folder',
   );
-  return result ?? (false, null);
+  return result == null ? (false, null) : (true, result.value);
 }
 
 /// Same as [showFolderPickerSheet] but for Credential Groups (flat, not a tree).
@@ -129,34 +133,15 @@ Future<PickResult> showGroupPickerSheet(
   BuildContext context, {
   required List<CredentialGroupSummary> groups,
   required String? currentGroupId,
+  Future<String?> Function()? onCreate,
 }) async {
-  final result = await showModalBottomSheet<PickResult>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Move to Credential Group', style: TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.workspaces_outline),
-            title: const Text('No Credential Group'),
-            trailing: currentGroupId == null ? const Icon(Icons.check) : null,
-            onTap: () => Navigator.of(context).pop((true, null)),
-          ),
-          for (final g in groups)
-            ListTile(
-              leading: Text(g.icon, style: const TextStyle(fontSize: 18)),
-              title: Text(g.name),
-              trailing: currentGroupId == g.id ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.of(context).pop((true, g.id)),
-            ),
-        ],
-      ),
-    ),
+  final result = await showOptionPicker<String?>(
+    context,
+    title: 'Move to Credential Group',
+    options: groupPickOptions(groups),
+    selected: currentGroupId,
+    onCreate: onCreate,
+    createLabel: 'New group',
   );
-  return result ?? (false, null);
+  return result == null ? (false, null) : (true, result.value);
 }

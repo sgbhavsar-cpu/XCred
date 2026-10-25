@@ -46,6 +46,16 @@ class SharesRepository {
     );
   }
 
+  /// Edits an existing share's end date (null = no end date) and revoke-if-changed flag.
+  /// Owner/Admin only (server-enforced, `PATCH /api/shares/{id}`).
+  Future<void> update(String shareId, {DateTime? expiresAt, required bool untilChanged}) {
+    return _api.patch<Map<String, dynamic>>(
+      '/api/shares/$shareId',
+      (json) => json as Map<String, dynamic>,
+      data: {'expiresAt': expiresAt?.toIso8601String(), 'untilChanged': untilChanged},
+    );
+  }
+
   /// Only the credential owner (or a global Admin) can revoke — SharesController.cs's
   /// `Revoke` returns 403 otherwise. A soft delete server-side (`IsRevoked` flag), not
   /// removed, so it still shows up (dimmed) in "Shared By Me".

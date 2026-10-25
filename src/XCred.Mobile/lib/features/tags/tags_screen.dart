@@ -12,6 +12,7 @@ import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_csv.dart';
 import '../../core/vault/credential_search.dart';
+import '../../core/widgets/clearable_search_field.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
@@ -254,20 +255,17 @@ class _TagsScreenState extends ConsumerState<TagsScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ClearableSearchField(
+              controller: _searchController,
+              hintText: 'Search name, IP, user, notes, tags…',
+              onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
             child: Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search name, IP, user, notes, tags… (any words)',
-                    ),
-                    onChanged: (v) => setState(() => _search = v),
-                  ),
-                ),
                 ToolbarIconButton(
                   icon: Icons.no_encryption_outlined,
                   active: _noPasswordFilter,

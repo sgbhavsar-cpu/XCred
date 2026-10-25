@@ -5,7 +5,10 @@ import '../../../core/models/credential_models.dart';
 import '../../../core/models/folder_tag_models.dart';
 import '../../../core/providers/vault_providers.dart';
 import '../../../core/vault/bulk_edit.dart';
+import '../../../core/widgets/option_picker.dart';
+import '../../../core/widgets/picker_field.dart';
 import 'credential_action_sheets.dart';
+import 'quick_create.dart';
 
 enum _TagState { none, add, remove }
 
@@ -85,7 +88,10 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
 
   Future<void> _pickFolder() async {
     final tree = ref.read(folderTreeProvider).value ?? const <FolderNode>[];
-    final (picked, id) = await showFolderPickerSheet(context, tree: tree, currentFolderId: _folderId);
+    final (picked, id) = await showFolderPickerSheet(context,
+        tree: tree,
+        currentFolderId: _folderId,
+        onCreate: () => showCreateFolderDialog(context, ref));
     if (!picked) return;
     var label = 'No Folder';
     if (id != null) {
@@ -98,7 +104,10 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
 
   Future<void> _pickGroup() async {
     final groups = ref.read(credentialGroupsProvider).value ?? const <CredentialGroupSummary>[];
-    final (picked, id) = await showGroupPickerSheet(context, groups: groups, currentGroupId: _groupId);
+    final (picked, id) = await showGroupPickerSheet(context,
+        groups: groups,
+        currentGroupId: _groupId,
+        onCreate: () => showCreateGroupDialog(context, ref));
     if (!picked) return;
     var label = 'No Credential Group';
     if (id != null) {
@@ -280,17 +289,17 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        DropdownButtonFormField<_ExpiryChoice>(
+                        PickerField<_ExpiryChoice>(
                           key: const ValueKey('bulk_expiry_choice'),
-                          initialValue: _expiryChoice,
-                          isDense: true,
-                          items: const [
-                            DropdownMenuItem(value: _ExpiryChoice.none, child: Text("Don't change")),
-                            DropdownMenuItem(value: _ExpiryChoice.set, child: Text('Set to a date')),
-                            DropdownMenuItem(value: _ExpiryChoice.extend, child: Text('Extend by N days')),
-                            DropdownMenuItem(value: _ExpiryChoice.clear, child: Text('Remove expiry')),
+                          label: 'Expiry change',
+                          value: _expiryChoice,
+                          options: const [
+                            PickOption(value: _ExpiryChoice.none, label: "Don't change"),
+                            PickOption(value: _ExpiryChoice.set, label: 'Set to a date'),
+                            PickOption(value: _ExpiryChoice.extend, label: 'Extend by N days'),
+                            PickOption(value: _ExpiryChoice.clear, label: 'Remove expiry'),
                           ],
-                          onChanged: (v) => setState(() => _expiryChoice = v ?? _ExpiryChoice.none),
+                          onChanged: (v) => setState(() => _expiryChoice = v),
                         ),
                         if (_expiryChoice == _ExpiryChoice.set)
                           Align(
@@ -325,18 +334,18 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        DropdownButtonFormField<_NotesChoice>(
+                        PickerField<_NotesChoice>(
                           key: const ValueKey('bulk_notes_choice'),
-                          initialValue: _notesChoice,
-                          isDense: true,
-                          items: const [
-                            DropdownMenuItem(value: _NotesChoice.none, child: Text("Don't change")),
-                            DropdownMenuItem(value: _NotesChoice.replace, child: Text('Replace notes')),
-                            DropdownMenuItem(value: _NotesChoice.append, child: Text('Add to the end')),
-                            DropdownMenuItem(value: _NotesChoice.prepend, child: Text('Add to the start')),
-                            DropdownMenuItem(value: _NotesChoice.clear, child: Text('Clear notes')),
+                          label: 'Notes change',
+                          value: _notesChoice,
+                          options: const [
+                            PickOption(value: _NotesChoice.none, label: "Don't change"),
+                            PickOption(value: _NotesChoice.replace, label: 'Replace notes'),
+                            PickOption(value: _NotesChoice.append, label: 'Add to the end'),
+                            PickOption(value: _NotesChoice.prepend, label: 'Add to the start'),
+                            PickOption(value: _NotesChoice.clear, label: 'Clear notes'),
                           ],
-                          onChanged: (v) => setState(() => _notesChoice = v ?? _NotesChoice.none),
+                          onChanged: (v) => setState(() => _notesChoice = v),
                         ),
                         if (_notesChoice == _NotesChoice.replace ||
                             _notesChoice == _NotesChoice.append ||
@@ -414,14 +423,15 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<bool>(
-                    initialValue: r.remove,
-                    isDense: true,
-                    items: const [
-                      DropdownMenuItem(value: false, child: Text('Add / update')),
-                      DropdownMenuItem(value: true, child: Text('Remove')),
+                  child: PickerField<bool>(
+                    label: 'Action',
+                    dense: true,
+                    value: r.remove,
+                    options: const [
+                      PickOption(value: false, label: 'Add / update'),
+                      PickOption(value: true, label: 'Remove'),
                     ],
-                    onChanged: (v) => setState(() => r.remove = v ?? false),
+                    onChanged: (v) => setState(() => r.remove = v),
                   ),
                 ),
                 IconButton(
@@ -453,15 +463,16 @@ class _BulkEditSheetState extends ConsumerState<_BulkEditSheet> {
               ),
               Padding(
                 padding: const EdgeInsets.only(right: 8, top: 8),
-                child: DropdownButtonFormField<String>(
-                  initialValue: r.fieldType,
-                  isDense: true,
-                  items: const [
-                    DropdownMenuItem(value: 'text', child: Text('Text')),
-                    DropdownMenuItem(value: 'password', child: Text('Hidden')),
-                    DropdownMenuItem(value: 'url', child: Text('URL')),
+                child: PickerField<String>(
+                  label: 'Field type',
+                  dense: true,
+                  value: r.fieldType,
+                  options: const [
+                    PickOption(value: 'text', label: 'Text'),
+                    PickOption(value: 'password', label: 'Hidden'),
+                    PickOption(value: 'url', label: 'URL'),
                   ],
-                  onChanged: (v) => setState(() => r.fieldType = v ?? 'text'),
+                  onChanged: (v) => setState(() => r.fieldType = v),
                 ),
               ),
             ],

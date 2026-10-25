@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_response.dart';
-import '../../core/models/folder_tag_models.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/accounts.dart';
@@ -13,7 +12,11 @@ import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_repository.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
+import '../../core/widgets/option_picker.dart';
+import '../../core/widgets/picker_field.dart';
+import 'widgets/credential_action_sheets.dart';
 import 'widgets/password_generator_sheet.dart';
+import 'widgets/quick_create.dart';
 
 /// MOB-CRED-03/04/05 — create/edit form shell, all 19 types (data-driven from
 /// [kCredentialFields], the same table the detail screen reads), list-type fields,
@@ -447,14 +450,15 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
     if (field.type == 'list') return _buildListField(field);
     if (field.type == 'select') {
       final controller = _fieldControllers[field.key]!;
-      return DropdownButtonFormField<String>(
-        initialValue: controller.text.isEmpty ? null : controller.text,
-        decoration: InputDecoration(labelText: field.label),
-        items: [
-          for (final option in field.options ?? const [])
-            DropdownMenuItem(value: option, child: Text(option)),
+      return PickerField<String>(
+        label: field.label,
+        placeholder: 'Select…',
+        value: controller.text,
+        options: [
+          const PickOption(value: '', label: 'Select…'),
+          for (final option in field.options ?? const <String>[]) PickOption(value: option, label: option),
         ],
-        onChanged: (v) => setState(() => controller.text = v ?? ''),
+        onChanged: (v) => setState(() => controller.text = v),
       );
     }
 
@@ -784,31 +788,28 @@ class _CredentialFormScreenState extends ConsumerState<CredentialFormScreen> {
             ),
             const SizedBox(height: 16),
             foldersAsync.when(
-              data: (tree) => DropdownButtonFormField<String?>(
-                initialValue: _folderId,
-                decoration: const InputDecoration(labelText: 'Folder'),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('No Folder')),
-                  for (final f in flattenFolders(tree))
-                    DropdownMenuItem<String?>(value: f.id, child: Text(f.indentedName)),
-                ],
+              data: (tree) => PickerField<String?>(
+                key: const ValueKey('form_folder'),
+                label: 'Folder',
+                value: _folderId,
+                options: folderPickOptions(tree),
                 onChanged: (v) => setState(() => _folderId = v),
+                onCreate: () => showCreateFolderDialog(context, ref),
+                createTooltip: 'Create a new folder',
               ),
               loading: () => const LinearProgressIndicator(),
               error: (_, _) => const Text('Failed to load folders.'),
             ),
             const SizedBox(height: 12),
             groupsAsync.when(
-              data: (groups) => DropdownButtonFormField<String?>(
-                initialValue: _credentialGroupId,
-                decoration: const InputDecoration(labelText: 'Credential Group (optional)'),
-                items: [
-                  const DropdownMenuItem<String?>(
-                      value: null, child: Text('No Credential Group')),
-                  for (final g in groups)
-                    DropdownMenuItem<String?>(value: g.id, child: Text('${g.icon} ${g.name}')),
-                ],
+              data: (groups) => PickerField<String?>(
+                key: const ValueKey('form_group'),
+                label: 'Credential Group (optional)',
+                value: _credentialGroupId,
+                options: groupPickOptions(groups),
                 onChanged: (v) => setState(() => _credentialGroupId = v),
+                onCreate: () => showCreateGroupDialog(context, ref),
+                createTooltip: 'Create a new credential group',
               ),
               loading: () => const LinearProgressIndicator(),
               error: (_, _) => const Text('Failed to load credential groups.'),

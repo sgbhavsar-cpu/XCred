@@ -129,3 +129,33 @@ class SharedByMeNotifier extends AsyncNotifier<List<SharedItem>> {
 
 final sharedByMeProvider =
     AsyncNotifierProvider<SharedByMeNotifier, List<SharedItem>>(SharedByMeNotifier.new);
+
+/// Everything *I* have shared out, indexed by credential id, for the "shared" badge on rows and
+/// the manage-shares sheet. Unlike [sharedByMeProvider] it decrypts nothing and makes no extra
+/// requests (one GET), so every list screen can watch it cheaply. Expired shares are kept in
+/// the list (the sheet flags them) but don't count towards the badge — see [activeShares].
+class SharesByCredentialNotifier
+    extends AsyncNotifier<Map<String, List<SharedCredentialSummary>>> {
+  @override
+  Future<Map<String, List<SharedCredentialSummary>>> build() async {
+    final shares = await ref.read(sharesRepositoryProvider).getSharedByMe();
+    final byCredential = <String, List<SharedCredentialSummary>>{};
+    for (final s in shares) {
+      if (!s.isRevoked) (byCredential[s.credentialId] ??= []).add(s);
+    }
+    return byCredential;
+  }
+
+  Future<void> refresh() async {
+    ref.invalidateSelf();
+    await future;
+  }
+}
+
+final sharesByCredentialProvider = AsyncNotifierProvider<SharesByCredentialNotifier,
+    Map<String, List<SharedCredentialSummary>>>(SharesByCredentialNotifier.new);
+
+/// The shares of one credential that currently grant access (not revoked, not past their end date).
+List<SharedCredentialSummary> activeShares(
+        Map<String, List<SharedCredentialSummary>>? index, String credentialId) =>
+    (index?[credentialId] ?? const <SharedCredentialSummary>[]).where((s) => !s.isExpired).toList();

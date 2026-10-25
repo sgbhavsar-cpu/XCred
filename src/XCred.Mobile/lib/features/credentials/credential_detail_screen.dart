@@ -16,6 +16,8 @@ import '../../core/vault/accounts.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
 import '../../core/vault/smart_links.dart';
+import '../../core/widgets/option_picker.dart';
+import '../../core/widgets/picker_field.dart';
 
 /// MOB-CRED-02/03/MOB-ATT-01/02 — credential detail: every populated field per its
 /// [FieldDef] type, reveal/hide for passwords, copy with the real clipboard-clear
@@ -285,17 +287,12 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DropdownButtonFormField<String>(
-                  initialValue: selectedUserId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Share with'),
-                  items: [
-                    for (final u in users)
-                      DropdownMenuItem(
-                        value: u.id,
-                        child: Text('${u.username} (${u.email})',
-                            overflow: TextOverflow.ellipsis, maxLines: 1),
-                      ),
+                PickerField<String?>(
+                  label: 'Share with',
+                  placeholder: 'Select a user…',
+                  value: selectedUserId,
+                  options: [
+                    for (final u in users) PickOption<String?>(value: u.id, label: u.username, hint: u.email),
                   ],
                   onChanged: (v) => setDialogState(() => selectedUserId = v),
                 ),
@@ -367,6 +364,7 @@ class _CredentialDetailScreenState extends ConsumerState<CredentialDetailScreen>
             expiresAt: expiryDate,
             untilChanged: untilChanged,
           );
+      ref.read(sharesByCredentialProvider.notifier).refresh(); // row "shared" badges
 
       if (mounted) {
         ScaffoldMessenger.of(context)

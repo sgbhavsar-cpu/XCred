@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/models/credential_models.dart';
 import '../../../core/models/folder_tag_models.dart';
+import '../../../core/providers/share_providers.dart';
 import '../../../core/providers/vault_providers.dart';
 import '../../../core/vault/credential_fields.dart';
 import '../../../core/vault/credential_type_meta.dart';
 import 'credential_action_sheets.dart';
+import 'credential_shares_sheet.dart';
+import 'quick_create.dart';
 
 /// Shared row rendering for the Credentials/Folders/Tags screens — mirrors the web app's
 /// `CredentialRow.tsx`, including its Edit/Duplicate/Copy Password/Delete actions (here
@@ -104,7 +107,10 @@ class CredentialRow extends ConsumerWidget {
   Future<void> _moveToFolder(BuildContext context, WidgetRef ref) async {
     final tree = ref.read(folderTreeProvider).value ?? const <FolderNode>[];
     final (picked, folderId) =
-        await showFolderPickerSheet(context, tree: tree, currentFolderId: cred.folderId);
+        await showFolderPickerSheet(context,
+            tree: tree,
+            currentFolderId: cred.folderId,
+            onCreate: () => showCreateFolderDialog(context, ref));
     if (!picked || !context.mounted) return;
     if (folderId == cred.folderId) return;
     try {
@@ -127,7 +133,9 @@ class CredentialRow extends ConsumerWidget {
   Future<void> _moveToGroup(BuildContext context, WidgetRef ref) async {
     final groups = ref.read(credentialGroupsProvider).value ?? const <CredentialGroupSummary>[];
     final (picked, groupId) = await showGroupPickerSheet(context,
-        groups: groups, currentGroupId: cred.credentialGroupId);
+        groups: groups,
+        currentGroupId: cred.credentialGroupId,
+        onCreate: () => showCreateGroupDialog(context, ref));
     if (!picked || !context.mounted) return;
     if (groupId == cred.credentialGroupId) return;
     try {
@@ -164,6 +172,7 @@ class CredentialRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final sharedWith = activeShares(ref.watch(sharesByCredentialProvider).value, cred.id);
     final subtitleParts = [
       credentialTypeLabel(cred.type),
       if (decrypted?.subtitle != null && decrypted!.subtitle!.isNotEmpty) decrypted!.subtitle!,
@@ -180,6 +189,32 @@ class CredentialRow extends ConsumerWidget {
             child: Text(decrypted?.name ?? '…',
                 overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
+          if (sharedWith.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            // "Shared" badge: tap to see who, edit end date / revoke-on-change, or stop sharing.
+            InkWell(
+              key: ValueKey('shared_badge_${cred.id}'),
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => showCredentialSharesSheet(context,
+                  credentialId: cred.id, credentialName: decrypted?.name ?? credentialTypeLabel(cred.type)),
+              child: Tooltip(
+                message: 'Shared with ${sharedWith.map((s) => s.sharedWithUsername ?? s.sharedWithGroupName ?? '?').join(', ')}',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.share_outlined, size: 12, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 2),
+                    Text('${sharedWith.length}',
+                        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
+                  ]),
+                ),
+              ),
+            ),
+          ],
           if (cred.isExpired) ...[
             const SizedBox(width: 6),
             Container(

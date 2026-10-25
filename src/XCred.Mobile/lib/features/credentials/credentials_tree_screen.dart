@@ -15,12 +15,15 @@ import '../../core/vault/credential_csv.dart';
 import '../../core/vault/credential_search.dart';
 import '../../core/vault/credential_fields.dart';
 import '../../core/vault/credential_type_meta.dart';
+import '../../core/widgets/clearable_search_field.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/option_picker.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
 import 'widgets/bulk_actions.dart';
 import 'widgets/bulk_assign_sheet.dart';
 import 'widgets/credential_row.dart';
+import 'widgets/quick_create.dart';
 
 /// MOB-CRED-01 — expandable tree of Credential Groups + an ungrouped section, search,
 /// type filter. Mirrors the web app's already-redesigned `CredentialsPage.tsx`.
@@ -118,63 +121,18 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
     await ref.read(fileExchangeProvider).saveOrShare(filename, Uint8List.fromList(utf8.encode(csv)), 'text/csv');
   }
 
-  static const _kGroupIconOptions = ['🏦', '📧', '🌐', '📱', '🏢', '🚗', '🏥', '📦'];
+  Future<void> _createGroup() => showCreateGroupDialog(context, ref);
 
-  Future<void> _createGroup() async {
-    final nameController = TextEditingController();
-    var selectedIcon = _kGroupIconOptions[0];
-
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Credential Group'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final icon in _kGroupIconOptions)
-                    ChoiceChip(
-                      label: Text(icon, style: const TextStyle(fontSize: 18)),
-                      selected: selectedIcon == icon,
-                      onSelected: (_) => setDialogState(() => selectedIcon = icon),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(hintText: 'e.g. "HDFC Bank"'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Create'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (created != true || nameController.text.trim().isEmpty) return;
-    try {
-      await ref
-          .read(credentialGroupRepositoryProvider)
-          .create(name: nameController.text.trim(), icon: selectedIcon);
-      await ref.read(credentialGroupsProvider.notifier).refresh();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Failed to create group.')));
-      }
+  /// Shares every credential in the group (all of them, not just the ones the current search shows).
+  void _shareGroup(CredentialGroupSummary group, List<CredentialListItem> visibleMembers) {
+    final all = ref.read(vaultProvider).value?.credentials ?? const <CredentialListItem>[];
+    final ids = [for (final c in all) if (c.credentialGroupId == group.id) c.id];
+    if (ids.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('This group has no credentials to share yet.')));
+      return;
     }
+    showBulkShareSheet(context, credentialIds: ids, title: group.name, onApplied: () {});
   }
 
   Future<void> _deleteGroup(CredentialGroupSummary group) async {
@@ -258,20 +216,17 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ClearableSearchField(
+              controller: _searchController,
+              hintText: 'Search name, IP, user, notes, tags…',
+              onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
             child: Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search name, IP, user, notes, tags… (any words)',
-                    ),
-                    onChanged: (v) => setState(() => _search = v),
-                  ),
-                ),
                 _TypeFilterButton(
                   value: _typeFilter,
                   onChanged: (v) => setState(() => _typeFilter = v),
@@ -293,6 +248,15 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
                   tooltip: 'Export filtered list to CSV',
                   onPressed: filtered.isEmpty ? null : () => _exportCsv(filtered, vaultAsync.value!.decrypted),
                 ),
+                if (_typeFilter != null)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(credentialTypeLabel(_typeFilter!),
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -412,27 +376,36 @@ class _CredentialsTreeScreenState extends ConsumerState<CredentialsTreeScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.add, size: 18),
-              tooltip: 'Add credential to this group',
-              onPressed: () async {
-                final saved =
-                    await context.push<bool>('/credentials/new?groupId=${group.id}');
-                if (saved == true) _refresh();
+            PopupMenuButton<String>(
+              key: ValueKey('group_menu_${group.id}'),
+              tooltip: 'Group actions',
+              icon: const Icon(Icons.more_vert, size: 20),
+              onSelected: (v) async {
+                switch (v) {
+                  case 'add':
+                    final saved = await context.push<bool>('/credentials/new?groupId=${group.id}');
+                    if (saved == true) _refresh();
+                  case 'share':
+                    _shareGroup(group, members);
+                  case 'manage':
+                    await context.push('/credential-groups/${group.id}');
+                    _refresh();
+                  case 'delete':
+                    _deleteGroup(group);
+                }
               },
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined, size: 18),
-              tooltip: 'Manage group',
-              onPressed: () async {
-                await context.push('/credential-groups/${group.id}');
-                _refresh();
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18),
-              tooltip: 'Delete group',
-              onPressed: () => _deleteGroup(group),
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'add', child: ListTile(leading: Icon(Icons.add), title: Text('Add credential'))),
+                PopupMenuItem(
+                    value: 'share',
+                    child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Share all in this group'))),
+                PopupMenuItem(
+                    value: 'manage',
+                    child: ListTile(leading: Icon(Icons.settings_outlined), title: Text('Manage group'))),
+                PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete group'))),
+              ],
             ),
             Icon(isOpen ? Icons.expand_less : Icons.expand_more),
           ],
@@ -544,16 +517,27 @@ class _TypeFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String?>(
+    return IconButton(
+      key: const ValueKey('type_filter'),
       tooltip: 'Filter by type',
       icon: Icon(Icons.filter_list,
           color: value != null ? Theme.of(context).colorScheme.primary : null),
-      onSelected: onChanged,
-      itemBuilder: (context) => [
-        const PopupMenuItem<String?>(value: null, child: Text('All Types')),
-        for (final type in kCredentialTypes)
-          PopupMenuItem<String?>(value: type, child: Text(credentialTypeLabel(type))),
-      ],
+      onPressed: () async {
+        final picked = await showOptionPicker<String?>(
+          context,
+          title: 'Filter by type',
+          selected: value,
+          options: [
+            const PickOption<String?>(value: null, label: 'All Types'),
+            for (final type in kCredentialTypes)
+              PickOption<String?>(
+                  value: type,
+                  label: credentialTypeLabel(type),
+                  leading: Text(credentialTypeIcon(type), style: const TextStyle(fontSize: 18))),
+          ],
+        );
+        if (picked != null) onChanged(picked.value);
+      },
     );
   }
 }

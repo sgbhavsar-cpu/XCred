@@ -6,6 +6,8 @@ import '../../core/models/admin_models.dart';
 import '../../core/providers/admin_providers.dart';
 import '../../core/providers/core_providers.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/option_picker.dart';
+import '../../core/widgets/picker_field.dart';
 
 /// MOB-ADMIN-01/02/03 — Users (role change, activate/deactivate), Pending approval,
 /// and Audit Log with real filters/pagination. The whole backend controller is
@@ -431,30 +433,26 @@ class _AuditLogTabState extends ConsumerState<_AuditLogTab> {
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: _actionFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Action', isDense: true),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Any action')),
-                        for (final a in kAuditActions)
-                          DropdownMenuItem<String?>(
-                              value: a, child: Text(a, overflow: TextOverflow.ellipsis)),
+                    child: PickerField<String?>(
+                      label: 'Action',
+                      dense: true,
+                      value: _actionFilter,
+                      options: [
+                        const PickOption<String?>(value: null, label: 'Any action'),
+                        for (final a in kAuditActions) PickOption<String?>(value: a, label: a),
                       ],
                       onChanged: _setActionFilter,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: _userIdFilter,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'User', isDense: true),
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Any user')),
-                        for (final u in users)
-                          DropdownMenuItem<String?>(
-                              value: u.id, child: Text(u.username, overflow: TextOverflow.ellipsis)),
+                    child: PickerField<String?>(
+                      label: 'User',
+                      dense: true,
+                      value: _userIdFilter,
+                      options: [
+                        const PickOption<String?>(value: null, label: 'Any user'),
+                        for (final u in users) PickOption<String?>(value: u.id, label: u.username),
                       ],
                       onChanged: _setUserFilter,
                     ),

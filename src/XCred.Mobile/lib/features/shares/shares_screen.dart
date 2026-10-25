@@ -184,6 +184,7 @@ class _SharedByMeActiveCard extends ConsumerWidget {
     try {
       await ref.read(sharesRepositoryProvider).revoke(item.share.id);
       await ref.read(sharedByMeProvider.notifier).refresh();
+      ref.invalidate(sharesByCredentialProvider); // row "shared" badges
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)

@@ -9,6 +9,8 @@ import '../../../core/providers/core_providers.dart';
 import '../../../core/providers/share_providers.dart';
 import '../../../core/providers/vault_providers.dart';
 import '../../../core/vault/credential_csv.dart';
+import '../../../core/widgets/option_picker.dart';
+import '../../../core/widgets/picker_field.dart';
 
 String _plural(int n) => '$n credential${n == 1 ? '' : 's'}';
 
@@ -74,19 +76,23 @@ Future<void> showBulkShareSheet(
   BuildContext context, {
   required List<String> credentialIds,
   required VoidCallback onApplied,
+  /// Names the folder / credential group being shared ("Share 4 credentials from <title>").
+  String? title,
 }) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => _BulkShareSheet(credentialIds: credentialIds, onApplied: onApplied),
+    builder: (context) =>
+        _BulkShareSheet(credentialIds: credentialIds, onApplied: onApplied, title: title),
   );
 }
 
 class _BulkShareSheet extends ConsumerStatefulWidget {
-  const _BulkShareSheet({required this.credentialIds, required this.onApplied});
+  const _BulkShareSheet({required this.credentialIds, required this.onApplied, this.title});
   final List<String> credentialIds;
   final VoidCallback onApplied;
+  final String? title;
 
   @override
   ConsumerState<_BulkShareSheet> createState() => _BulkShareSheetState();
@@ -122,6 +128,9 @@ class _BulkShareSheetState extends ConsumerState<_BulkShareSheet> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       if (r.shared > 0) {
+        // The "shared" badges on rows and the Shared screen's "by me" tab both read this.
+        ref.read(sharesByCredentialProvider.notifier).refresh();
+        ref.invalidate(sharedByMeProvider);
         messenger.showSnackBar(SnackBar(
             content: Text('Shared ${_plural(r.shared)} with ${recipient.username}.')));
       }
@@ -156,7 +165,7 @@ class _BulkShareSheetState extends ConsumerState<_BulkShareSheet> {
           Row(
             children: [
               Expanded(
-                child: Text('Share ${_plural(count)}',
+                child: Text('Share ${_plural(count)}${widget.title == null ? '' : ' from ${widget.title}'}',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
               ),
               IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
@@ -168,15 +177,14 @@ class _BulkShareSheetState extends ConsumerState<_BulkShareSheet> {
           else if (users.isEmpty)
             const Text('No other users in the organisation.')
           else
-            DropdownButtonFormField<String>(
+            PickerField<String?>(
               key: const ValueKey('bulk_share_user'),
-              initialValue: _userId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Share with'),
-              items: [
+              label: 'Share with',
+              placeholder: 'Select a user…',
+              value: _userId,
+              options: [
                 for (final u in users)
-                  DropdownMenuItem(
-                      value: u.id, child: Text('${u.username} (${u.email})', overflow: TextOverflow.ellipsis)),
+                  PickOption<String?>(value: u.id, label: u.username, hint: u.email),
               ],
               onChanged: (v) => setState(() => _userId = v),
             ),

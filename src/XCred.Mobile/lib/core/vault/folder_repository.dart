@@ -12,12 +12,14 @@ class FolderRepository {
     return data.map((e) => FolderNode.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<void> create({required String name, String? parentFolderId}) {
-    return _api.post<Map<String, dynamic>>(
+  /// Returns the new folder's id so a caller (the "+" next to a Folder picker) can select it.
+  Future<String> create({required String name, String? parentFolderId}) async {
+    final created = await _api.post<Map<String, dynamic>>(
       '/api/folders',
       (json) => json as Map<String, dynamic>,
       data: {'name': name, 'parentFolderId': parentFolderId},
     );
+    return created['id'] as String;
   }
 
   /// [parentFolderId] must be the folder's *current* parent — the update endpoint

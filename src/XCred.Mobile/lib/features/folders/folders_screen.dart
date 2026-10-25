@@ -12,12 +12,14 @@ import '../../core/providers/core_providers.dart';
 import '../../core/providers/vault_providers.dart';
 import '../../core/vault/credential_csv.dart';
 import '../../core/vault/credential_search.dart';
+import '../../core/widgets/clearable_search_field.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/selection_app_bar.dart';
 import '../../core/widgets/toolbar_icon_button.dart';
 import '../credentials/widgets/bulk_actions.dart';
 import '../credentials/widgets/bulk_assign_sheet.dart';
 import '../credentials/widgets/credential_row.dart';
+import '../credentials/widgets/quick_create.dart';
 
 /// MOB-FOLD-01 — nested folder tree, create/rename/delete, member credentials shown via
 /// the same [CredentialRow] pattern as the Credentials screen. Mirrors the web app's
@@ -94,63 +96,23 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
         if (!allSelected) _selectedIds.addAll(visible.map((c) => c.id));
       });
 
-  Future<void> _createFolder() async {
-    final tree = ref.read(folderTreeProvider).value ?? const [];
-    final flat = flattenFolders(tree);
-    final nameController = TextEditingController();
-    String? parentId;
+  Future<void> _createFolder() => showCreateFolderDialog(context, ref);
 
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Folder'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Folder name'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                initialValue: parentId,
-                decoration: const InputDecoration(labelText: 'Parent folder (optional)'),
-                items: [
-                  const DropdownMenuItem<String?>(
-                      value: null, child: Text('None (top-level)')),
-                  for (final f in flat)
-                    DropdownMenuItem<String?>(value: f.id, child: Text(f.indentedName)),
-                ],
-                onChanged: (v) => setDialogState(() => parentId = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Create'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (created != true || nameController.text.trim().isEmpty) return;
-    try {
-      await ref
-          .read(folderRepositoryProvider)
-          .create(name: nameController.text.trim(), parentFolderId: parentId);
-      await ref.read(folderTreeProvider.notifier).refresh();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Failed to create folder.')));
-      }
+  /// Shares every credential in the folder AND all its subfolders (not just what a search shows).
+  void _shareFolder(FolderNode folder, VaultState vault) {
+    final inTree = <String>{};
+    void collect(FolderNode f) {
+      inTree.add(f.id);
+      f.children.forEach(collect);
     }
+    collect(folder);
+    final ids = [for (final c in vault.credentials) if (c.folderId != null && inTree.contains(c.folderId)) c.id];
+    if (ids.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This folder (and its subfolders) has no credentials to share yet.')));
+      return;
+    }
+    showBulkShareSheet(context, credentialIds: ids, title: folder.name, onApplied: () {});
   }
 
   Future<void> _renameFolder(FolderNode folder) async {
@@ -283,20 +245,17 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ClearableSearchField(
+              controller: _searchController,
+              hintText: 'Search name, IP, user, notes, tags…',
+              onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
             child: Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search, size: 20),
-                      hintText: 'Search name, IP, user, notes, tags… (any words)',
-                    ),
-                    onChanged: (v) => setState(() => _search = v),
-                  ),
-                ),
                 ToolbarIconButton(
                   icon: Icons.no_encryption_outlined,
                   active: _noPasswordFilter,
@@ -404,24 +363,31 @@ class _FoldersScreenState extends ConsumerState<FoldersScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              icon: const Icon(Icons.add, size: 18),
-              tooltip: 'Add credential to this folder',
-              onPressed: () async {
-                final saved =
-                    await context.push<bool>('/credentials/new?folderId=${folder.id}');
-                if (saved == true) _refresh();
+            PopupMenuButton<String>(
+              key: ValueKey('folder_menu_${folder.id}'),
+              tooltip: 'Folder actions',
+              icon: const Icon(Icons.more_vert, size: 20),
+              onSelected: (v) async {
+                switch (v) {
+                  case 'add':
+                    final saved = await context.push<bool>('/credentials/new?folderId=${folder.id}');
+                    if (saved == true) _refresh();
+                  case 'share':
+                    _shareFolder(folder, vault);
+                  case 'rename':
+                    _renameFolder(folder);
+                  case 'delete':
+                    _deleteFolder(folder);
+                }
               },
-            ),
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              tooltip: 'Rename',
-              onPressed: () => _renameFolder(folder),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18),
-              tooltip: 'Delete',
-              onPressed: () => _deleteFolder(folder),
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'add', child: ListTile(leading: Icon(Icons.add), title: Text('Add credential'))),
+                PopupMenuItem(
+                    value: 'share',
+                    child: ListTile(leading: Icon(Icons.share_outlined), title: Text('Share all in this folder'))),
+                PopupMenuItem(value: 'rename', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Rename'))),
+                PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Delete'))),
+              ],
             ),
             Icon(isOpen ? Icons.expand_less : Icons.expand_more),
           ],
