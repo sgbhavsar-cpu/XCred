@@ -180,7 +180,7 @@ export default function CredentialFormPage() {
   const typeFields = CREDENTIAL_FIELDS[type] ?? [];
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-900">{isEdit ? 'Edit Credential' : 'Add Credential'}</h1>
         <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">

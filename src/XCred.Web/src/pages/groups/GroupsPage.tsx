@@ -84,13 +84,13 @@ export default function GroupsPage() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Teams</h1>
           <p className="text-slate-500 text-sm">Manage teams of users and shared access</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 shrink-0 whitespace-nowrap bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
           <Plus className="w-4 h-4" /> New Team
         </button>
       </div>

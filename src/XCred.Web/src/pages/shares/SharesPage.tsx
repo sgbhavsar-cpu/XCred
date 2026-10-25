@@ -83,7 +83,7 @@ export default function SharesPage() {
   const byMeRevoked = byMe.filter(s => s.isRevoked);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Shared Credentials</h1>
         <p className="text-slate-500 text-sm">Credentials shared with you and credentials you've shared with others.</p>
@@ -134,8 +134,8 @@ function SharedWithMe({ shares }: { shares: DecryptedShare[] }) {
     <div className="space-y-3">
       {shares.map(s => (
         <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <span className="text-2xl">{credentialTypeIcon(s.credentialType)}</span>
               <div>
                 <p className="font-semibold text-slate-900">{s.name}</p>
@@ -180,15 +180,15 @@ function SharedByMe({ active, revoked, onRevoke }: {
           <div className="space-y-3">
             {active.map(s => (
               <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <span className="text-2xl">{credentialTypeIcon(s.credentialType)}</span>
                     <div>
                       <p className="font-semibold text-slate-900">{s.name}</p>
                       <p className="text-sm text-slate-500">{credentialTypeLabel(s.credentialType)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge expiresAt={s.expiresAt} untilChanged={s.untilChanged} />
                     <button
                       onClick={() => onRevoke(s.id)}

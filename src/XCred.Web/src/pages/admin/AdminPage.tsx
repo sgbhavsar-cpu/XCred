@@ -58,7 +58,7 @@ export default function AdminPage() {
   ];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <div className="bg-indigo-600 rounded-lg p-2">
           <Shield className="w-5 h-5 text-white" />
@@ -290,7 +290,7 @@ function OrgSettingsTab() {
           <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
             <h3 className="font-semibold text-slate-800">{section.title}</h3>
           </div>
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
             {section.fields.map(f => (
               <div key={f.key}>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{f.label}</label>
@@ -407,7 +407,7 @@ function SystemBackupTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-slate-800">Export Full System Backup</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -432,7 +432,7 @@ function SystemBackupTab() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-red-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-red-200 p-4 sm:p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-slate-800">Restore Full System Backup</h2>
           <p className="text-sm text-slate-500 mt-1">

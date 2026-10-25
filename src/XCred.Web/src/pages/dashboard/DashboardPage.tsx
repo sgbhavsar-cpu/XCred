@@ -80,7 +80,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       {/* Page header with logout */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>

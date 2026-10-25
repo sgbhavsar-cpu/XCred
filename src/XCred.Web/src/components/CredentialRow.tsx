@@ -49,9 +49,9 @@ export default function CredentialRow({
     <div ref={setNodeRef} data-testid="credential-row" data-selected={selected ? 'true' : undefined}
       onClick={selectable && selectionActive ? () => onToggleSelect?.() : onOpen}
       style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 } : undefined}
-      className={cn('flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-colors relative',
+      className={cn('flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 px-3 sm:px-5 py-3.5 cursor-pointer transition-colors relative',
         selected ? 'bg-indigo-100/70 hover:bg-indigo-100 shadow-[inset_3px_0_0_0_var(--color-indigo-500)]' : cn('hover:bg-slate-50', indent && 'bg-slate-50/30'),
-        indent && 'pl-14', isDragging && 'opacity-40')}>
+        indent && 'pl-6 sm:pl-14', isDragging && 'opacity-40')}>
       {draggable && (
         <button type="button" {...attributes} {...listeners}
           onClick={e => e.stopPropagation()}
@@ -66,8 +66,8 @@ export default function CredentialRow({
           className="shrink-0 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
       )}
       <span className="text-2xl shrink-0">{credentialTypeIcon(cred.type)}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-[9rem]">
+        <div className="flex items-center gap-2 min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">{decrypted?.name ?? '…'}</p>
           {isExpired && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">Expired</span>}
           {sharedWith && sharedWith.length > 0 && (
@@ -100,8 +100,9 @@ export default function CredentialRow({
           </div>
         )}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <p className="text-xs text-slate-400 mr-2">{formatDate(cred.updatedAt)}</p>
+      {/* Below sm the action icons drop to their own line (date left, icons right) instead of squeezing the name to nothing. */}
+      <div className="flex items-center gap-1 shrink-0 w-full sm:w-auto justify-end">
+        <p className="text-xs text-slate-400 mr-auto sm:mr-2">{formatDate(cred.updatedAt)}</p>
         <button onClick={e => { e.stopPropagation(); onOpen(); }}
           className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="View">
           <Eye className="w-3.5 h-3.5" />

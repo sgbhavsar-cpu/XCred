@@ -136,16 +136,16 @@ export default function CredentialGroupDetailPage() {
   if (!group) return null;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-start gap-3">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div className="flex items-start gap-3 min-w-0">
           <button onClick={() => navigate('/credentials')} className="mt-1 text-slate-400 hover:text-slate-600 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-2xl">{group.icon}</span>
-              <h1 className="text-2xl font-bold text-slate-900">{group.name}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 break-words min-w-0">{group.name}</h1>
             </div>
             <p className="text-slate-500 text-sm mt-0.5">{group.credentialCount} credential{group.credentialCount !== 1 ? 's' : ''}</p>
           </div>

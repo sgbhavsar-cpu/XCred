@@ -16,7 +16,7 @@ export interface SelectOption {
 export const SEARCH_THRESHOLD = 5;
 /** The list shows this many rows before it scrolls. */
 const MAX_VISIBLE_ROWS = 6;
-const ROW_HEIGHT = 36; // px — keep in sync with the `h-9` row class below
+const ROW_HEIGHT = 36; // px — one-line row height (the `min-h-9` row class below); two-line rows on phones just show fewer before scrolling
 
 /** Case- and punctuation-insensitive, so "wifi" finds "Wi-Fi" and "rdp" finds "Remote Desktop (RDP)". */
 const normalize = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '');
@@ -137,11 +137,12 @@ export default function Select({
               {filtered.map((o, i) => (
                 <div key={o.value} role="option" aria-selected={o.value === value} data-index={i} data-value={o.value}
                   onClick={() => pick(o)} onMouseMove={() => active !== i && setActive(i)}
-                  className={cn('h-9 px-3 flex items-center gap-2 text-sm cursor-pointer',
+                  className={cn('min-h-9 px-3 py-1 flex items-center gap-2 text-sm cursor-pointer',
                     i === active ? 'bg-indigo-50' : '', o.value === value ? 'text-indigo-700 font-medium' : 'text-slate-700')}>
-                  <span className="flex-1 min-w-0 truncate">
-                    {o.icon && <span className="mr-1.5">{o.icon}</span>}{o.label}
-                    {o.hint && <>{' '}<span className="ml-1 text-xs text-slate-400 font-normal">{o.hint}</span></>}
+                  {/* Hint (e.g. an email) sits under the label on narrow screens so it is never clipped. */}
+                  <span className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
+                    <span className="truncate">{o.icon && <span className="mr-1.5">{o.icon}</span>}{o.label}</span>
+                    {o.hint && <span className="text-xs text-slate-400 font-normal truncate">{o.hint}</span>}
                   </span>
                   {o.value === value && <Check className="w-4 h-4 shrink-0" />}
                 </div>

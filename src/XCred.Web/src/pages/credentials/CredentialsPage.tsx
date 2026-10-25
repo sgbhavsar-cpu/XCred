@@ -244,7 +244,7 @@ export default function CredentialsPage() {
   const refreshAll = () => { refetch(); fetchGroups(); };
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
@@ -278,7 +278,7 @@ export default function CredentialsPage() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setShowCreateGroup(true)}
             className="flex items-center gap-2 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
             <Boxes className="w-4 h-4" /> New Credential Group
@@ -329,7 +329,7 @@ export default function CredentialsPage() {
 
       {/* Search + type filter */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[200px]"
+        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[16rem]"
           placeholder="Search name, IP, user, notes, tags… (any words, any order)" />
         <Select className="w-52" ariaLabel="Filter by type" value={filterType} onChange={setFilterType}
           options={[{ value: '', label: 'All Types' }, ...ALL_TYPES.map(t => ({ value: t, label: credentialTypeLabel(t) }))]} />
@@ -401,14 +401,14 @@ export default function CredentialsPage() {
               return (
                 <div key={group.id}>
                   <DroppableRow id={group.id} onClick={() => toggleExpand(group.id)}
-                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 cursor-pointer transition-colors">
+                    className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1 px-3 sm:px-5 py-3.5 hover:bg-slate-50 cursor-pointer transition-colors">
                     {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
                     <span className="text-2xl shrink-0">{group.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{group.name}</p>
+                    <div className="flex-1 min-w-[7rem]">
+                      <p className="text-sm font-semibold text-slate-800 break-words sm:truncate">{group.name}</p>
                       <p className="text-xs text-slate-400">{members.length} credential{members.length !== 1 ? 's' : ''}</p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0 w-full sm:w-auto justify-end">
                       <button onClick={e => { e.stopPropagation(); navigate(`/credentials/new?groupId=${group.id}&returnTo=${encodeURIComponent('/credentials')}`); }}
                         className="p-1.5 rounded hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Add credential to this group">
                         <Plus className="w-3.5 h-3.5" />

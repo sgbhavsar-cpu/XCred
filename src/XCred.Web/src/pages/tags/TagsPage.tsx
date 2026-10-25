@@ -158,14 +158,14 @@ export default function TagsPage() {
   const toggleSelectAll = () => setSelectedIds(allVisibleSelected ? new Set() : new Set(visibleCredentials.map(c => c.id)));
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Tags</h1>
           <p className="text-slate-500 text-sm">Organise credentials with color-coded labels</p>
         </div>
         <button onClick={() => setAdding(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+          className="flex items-center gap-2 shrink-0 whitespace-nowrap bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
           <Plus className="w-4 h-4" /> New Tag
         </button>
       </div>
@@ -199,7 +199,7 @@ export default function TagsPage() {
       )}
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[200px]"
+        <SearchInput value={search} onChange={setSearch} className="flex-1 min-w-[16rem]"
           placeholder="Search name, IP, user, notes, tags… (any words, any order)" />
         <ToolbarIconButton icon={ShieldOff} active={noPasswordFilter} onClick={() => setNoPasswordFilter(v => !v)}
           title="Show only credentials missing a password" />

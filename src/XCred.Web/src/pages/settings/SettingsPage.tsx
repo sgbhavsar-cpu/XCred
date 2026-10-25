@@ -28,7 +28,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Settings</h1>
 
       {/* Tab list */}
@@ -72,14 +72,14 @@ function ProfileTab({ user }: { user: ReturnType<typeof useAuthStore.getState>['
   }, []);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-5">
       <h2 className="font-semibold text-slate-800">Account Information</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Info label="Username" value={profile?.username ?? user?.username} />
         <Info label="Email" value={profile?.email ?? user?.email} />
         <Info label="Role" value={profile?.role ?? user?.role} />
         <Info label="Member Since" value={profile?.createdAt ? formatDateTime(profile.createdAt) : '—'} />
-        <Info label="Last Login" value={profile?.lastLoginAt ? formatDateTime(profile.lastLoginAt) : 'N/A'} className="col-span-2" />
+        <Info label="Last Login" value={profile?.lastLoginAt ? formatDateTime(profile.lastLoginAt) : 'N/A'} className="sm:col-span-2" />
       </div>
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2">
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -93,7 +93,7 @@ function Info({ label, value, className = '' }: { label: string; value?: string;
   return (
     <div className={className}>
       <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
-      <p className="text-sm text-slate-800 font-medium">{value ?? '—'}</p>
+      <p className="text-sm text-slate-800 font-medium break-words">{value ?? '—'}</p>
     </div>
   );
 }
@@ -121,7 +121,7 @@ function ChangePasswordTab() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
       <h2 className="font-semibold text-slate-800">Change Login Password</h2>
       <p className="text-sm text-slate-500">This is your login password — separate from your vault master password.</p>
       {[
@@ -197,7 +197,7 @@ function NotificationsTab() {
   if (!loaded) return <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-5">
       <h2 className="font-semibold text-slate-800">Email Notification Preferences</h2>
       <div className="space-y-4">
         {items.map(item => (
@@ -400,7 +400,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
   return (
     <div className="space-y-4">
       {/* Export */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-slate-800">Export Backup</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -425,7 +425,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
       </div>
 
       {/* Import */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-slate-800">Restore from Backup</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -473,7 +473,7 @@ function BackupTab({ privateKey, setPublicKey, setCryptoKeys }: {
       </div>
 
       {/* Plain JSON export */}
-      <div className="bg-white rounded-xl border border-red-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-red-200 p-4 sm:p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-slate-800">Export as Plain JSON</h2>
           <p className="text-sm text-slate-500 mt-1">
@@ -597,7 +597,7 @@ function ImportTab() {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
           <h2 className="font-semibold text-slate-800">Import from CSV</h2>
@@ -614,7 +614,7 @@ function ImportTab() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <FileJson className="w-5 h-5 text-indigo-600" />
           <h2 className="font-semibold text-slate-800">Import Plain JSON Export</h2>
@@ -734,7 +734,7 @@ function ChangeMasterKeyTab({ privateKey, setPublicKey, setCryptoKeys }: {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-6 space-y-4">
         <h2 className="font-semibold text-slate-800">Change Master Password</h2>
         {[
           { label: 'New Master Password', value: newMaster, set: setNewMaster, hint: 'Minimum 12 characters' },

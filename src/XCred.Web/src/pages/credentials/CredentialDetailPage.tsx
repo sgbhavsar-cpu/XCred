@@ -257,23 +257,23 @@ export default function CredentialDetailPage() {
   const isExpired = cred.expiryDate && new Date(cred.expiryDate) < new Date();
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div className="flex items-start gap-3 min-w-0">
           <button onClick={() => navigate(-1)} className="mt-1 text-slate-400 hover:text-slate-600 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-2xl">{credentialTypeIcon(cred.type)}</span>
-              <h1 data-field="name" className="text-2xl font-bold text-slate-900">{name}</h1>
+              <h1 data-field="name" className="text-xl sm:text-2xl font-bold text-slate-900 break-words min-w-0">{name}</h1>
               {isExpired && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Expired</span>}
             </div>
             <p className="text-slate-500 text-sm mt-0.5">{credentialTypeLabel(cred.type)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 pl-8 sm:pl-0">
           <button onClick={openShareModal}
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors">
             <Share2 className="w-4 h-4" /> Share
